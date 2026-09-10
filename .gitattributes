@@ -1,0 +1,4 @@
+*.gradle text eol=lf
+*.gradle.kts text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
