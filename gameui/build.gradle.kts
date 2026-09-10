@@ -50,9 +50,9 @@ dependencies {
 
     implementation(composeBom)
 
-    // Activity
+    // Activity + Compose
     implementation(
-        "androidx.activity:activity-compose:1.11.0"
+        "androidx.activity:activity-compose:1.10.1"
     )
 
     // Compose Runtime
@@ -80,16 +80,16 @@ dependencies {
 
     // Lifecycle
     implementation(
-        "androidx.lifecycle:lifecycle-runtime-ktx:2.10.0"
+        "androidx.lifecycle:lifecycle-runtime-ktx:2.9.4"
     )
 
     implementation(
-        "androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0"
+        "androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.4"
     )
 
     // Saved State
     implementation(
-        "androidx.savedstate:savedstate-ktx:1.3.0"
+        "androidx.savedstate:savedstate-ktx:1.2.1"
     )
 
     // Debug tooling
