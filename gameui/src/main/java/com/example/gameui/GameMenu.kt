@@ -41,6 +41,8 @@ object GameMenu {
 
     @JvmStatic
     fun show(activity: Activity) {
+
+        // همیشه روی Main Thread اجرا شود
         if (Looper.myLooper() != Looper.getMainLooper()) {
             activity.runOnUiThread {
                 show(activity)
@@ -48,6 +50,7 @@ object GameMenu {
             return
         }
 
+        // Activity در حال بسته شدن نباشد
         if (activity.isFinishing) {
             return
         }
@@ -58,34 +61,35 @@ object GameMenu {
             }
         }
 
+        // روت اصلی Activity
         val root = activity.findViewById<ViewGroup>(android.R.id.content)
             ?: return
 
+        // اگر قبلاً نمایش داده شده، دوباره نساز
         if (composeView != null) {
             return
         }
 
         try {
+
+            // Owner مخصوص Compose
             val owner = GameLifecycleOwner()
 
+            // ساخت ComposeView
             val view = ComposeView(activity).apply {
                 setBackgroundColor(Color.TRANSPARENT)
 
-                // ComposeView lifecycle owner
+                // Lifecycle
                 setViewTreeLifecycleOwner(owner)
 
-                // ComposeView saved-state owner
+                // SavedState
                 setViewTreeSavedStateRegistryOwner(owner)
-
-                setContent {
-                    GameMenuContent(
-                        onStartGame = {
-                            onStartGameClicked()
-                        }
-                    )
-                }
             }
 
+            /*
+             * اول View را داخل hierarchy قرار می‌دهیم،
+             * سپس Compose را فعال می‌کنیم.
+             */
             root.addView(
                 view,
                 ViewGroup.LayoutParams(
@@ -94,19 +98,35 @@ object GameMenu {
                 )
             )
 
+            // Compose content
+            view.setContent {
+                GameMenuContent(
+                    onStartGame = {
+                        onStartGameClicked()
+                    }
+                )
+            }
+
+            // Lifecycle -> RESUMED
             owner.resume()
 
+            // نگه داشتن reference
             lifecycleOwner = owner
             composeView = view
 
             Log.i(TAG, "GameMenu shown")
+
         } catch (t: Throwable) {
+
             Log.e(TAG, "Failed to show GameMenu", t)
+
         }
     }
 
     @JvmStatic
     fun hide() {
+
+        // اجرای عملیات روی Main Thread
         if (Looper.myLooper() != Looper.getMainLooper()) {
             composeView?.post {
                 hide()
@@ -115,14 +135,23 @@ object GameMenu {
         }
 
         try {
+
+            // Lifecycle -> DESTROYED
             lifecycleOwner?.destroy()
 
             composeView?.let { view ->
+
+                // حذف از parent
                 (view.parent as? ViewGroup)?.removeView(view)
+
+                // آزاد کردن Compose
                 view.disposeComposition()
             }
+
         } catch (t: Throwable) {
+
             Log.e(TAG, "Failed to hide GameMenu", t)
+
         }
 
         composeView = null
@@ -137,18 +166,42 @@ object GameMenu {
     }
 }
 
+
+/*
+ * Owner مخصوص Lifecycle و SavedState
+ * برای UnityPlayerActivity که ComponentActivity نیست.
+ */
 private class GameLifecycleOwner :
     LifecycleOwner,
     SavedStateRegistryOwner {
 
-    private val lifecycleRegistry = LifecycleRegistry(this)
+    private val lifecycleRegistry =
+        LifecycleRegistry(this)
 
     private val savedStateController =
         SavedStateRegistryController.create(this)
 
     init {
+
+        /*
+         * ابتدا SavedStateController را attach می‌کنیم.
+         */
         savedStateController.performAttach()
-        lifecycleRegistry.currentState = Lifecycle.State.CREATED
+
+        /*
+         * چون این Owner یک ComponentActivity واقعی نیست،
+         * restoration را خودمان انجام می‌دهیم.
+         *
+         * null یعنی SavedState اولیه‌ای برای restore نداریم.
+         */
+        savedStateController.performRestore(null)
+
+        /*
+         * فقط بعد از performRestore اجازه داریم
+         * Lifecycle را به CREATED ببریم.
+         */
+        lifecycleRegistry.currentState =
+            Lifecycle.State.CREATED
     }
 
     override val lifecycle: Lifecycle
@@ -158,32 +211,43 @@ private class GameLifecycleOwner :
         get() = savedStateController.savedStateRegistry
 
     fun resume() {
-        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+        lifecycleRegistry.currentState =
+            Lifecycle.State.RESUMED
     }
 
     fun destroy() {
-        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        lifecycleRegistry.currentState =
+            Lifecycle.State.DESTROYED
     }
 }
 
+
+/*
+ * UI اصلی
+ */
 @Composable
 private fun GameMenuContent(
     onStartGame: () -> Unit
 ) {
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(ComposeColor.Transparent)
             .padding(24.dp),
+
         contentAlignment = Alignment.Center
     ) {
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+
             Button(
                 onClick = onStartGame
             ) {
+
                 Text("شروع بازی")
             }
         }
