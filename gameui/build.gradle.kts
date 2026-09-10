@@ -10,15 +10,23 @@ android {
     defaultConfig {
         minSdk = 21
 
-        consumerProguardFiles("consumer-rules.pro")
+        consumerProguardFiles(
+            "consumer-rules.pro"
+        )
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+        }
+
         release {
             isMinifyEnabled = false
 
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
+                getDefaultProguardFile(
+                    "proguard-android-optimize.txt"
+                ),
                 "proguard-rules.pro"
             )
         }
@@ -35,24 +43,57 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2025.10.01")
+    // Compose BOM
+    val composeBom = platform(
+        "androidx.compose:compose-bom:2025.10.01"
+    )
 
     implementation(composeBom)
 
-    // Compose runtime
-    implementation("androidx.compose.runtime:runtime")
+    // Activity
+    implementation(
+        "androidx.activity:activity-compose:1.11.0"
+    )
+
+    // Compose Runtime
+    implementation(
+        "androidx.compose.runtime:runtime"
+    )
 
     // Compose UI
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation(
+        "androidx.compose.ui:ui"
+    )
 
-    // Material
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation(
+        "androidx.compose.ui:ui-tooling-preview"
+    )
 
-    // Activity
-    implementation("androidx.activity:activity-compose:1.11.0")
+    // Material 3
+    implementation(
+        "androidx.compose.material3:material3"
+    )
+
+    implementation(
+        "androidx.compose.material:material-icons-extended"
+    )
+
+    // Lifecycle
+    implementation(
+        "androidx.lifecycle:lifecycle-runtime-ktx:2.10.0"
+    )
+
+    implementation(
+        "androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0"
+    )
+
+    // Saved State
+    implementation(
+        "androidx.savedstate:savedstate-ktx:1.3.0"
+    )
 
     // Debug tooling
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation(
+        "androidx.compose.ui:ui-tooling"
+    )
 }
