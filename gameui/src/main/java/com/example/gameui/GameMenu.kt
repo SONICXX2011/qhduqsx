@@ -2,6 +2,7 @@ package com.example.gameui
 
 import android.app.Activity
 import android.graphics.Color
+import android.os.Build
 import android.os.Looper
 import android.util.Log
 import android.view.ViewGroup
@@ -22,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.ViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
 
 object GameMenu {
 
@@ -47,8 +48,10 @@ object GameMenu {
             return
         }
 
-        if (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed) {
-            return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            if (activity.isDestroyed) {
+                return
+            }
         }
 
         val root = activity.findViewById<ViewGroup>(android.R.id.content)
@@ -64,11 +67,8 @@ object GameMenu {
             val view = ComposeView(activity).apply {
                 setBackgroundColor(Color.TRANSPARENT)
 
-                /*
-                 * ComposeView در UnityPlayerActivity به‌صورت عادی
-                 * LifecycleOwner پیدا نمی‌کند.
-                 */
-                ViewTreeLifecycleOwner.set(this, owner)
+                // ComposeView برای کار کردن به LifecycleOwner نیاز دارد.
+                setViewTreeLifecycleOwner(owner)
 
                 setContent {
                     GameMenuContent(
