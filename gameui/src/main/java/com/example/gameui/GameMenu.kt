@@ -24,6 +24,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 
 object GameMenu {
 
@@ -67,8 +71,11 @@ object GameMenu {
             val view = ComposeView(activity).apply {
                 setBackgroundColor(Color.TRANSPARENT)
 
-                // ComposeView برای کار کردن به LifecycleOwner نیاز دارد.
+                // ComposeView lifecycle owner
                 setViewTreeLifecycleOwner(owner)
+
+                // ComposeView saved-state owner
+                setViewTreeSavedStateRegistryOwner(owner)
 
                 setContent {
                     GameMenuContent(
@@ -130,23 +137,32 @@ object GameMenu {
     }
 }
 
-private class GameLifecycleOwner : LifecycleOwner {
+private class GameLifecycleOwner :
+    LifecycleOwner,
+    SavedStateRegistryOwner {
 
-    private val registry = LifecycleRegistry(this)
+    private val lifecycleRegistry = LifecycleRegistry(this)
+
+    private val savedStateController =
+        SavedStateRegistryController.create(this)
 
     init {
-        registry.currentState = Lifecycle.State.CREATED
+        savedStateController.performAttach()
+        lifecycleRegistry.currentState = Lifecycle.State.CREATED
     }
 
     override val lifecycle: Lifecycle
-        get() = registry
+        get() = lifecycleRegistry
+
+    override val savedStateRegistry: SavedStateRegistry
+        get() = savedStateController.savedStateRegistry
 
     fun resume() {
-        registry.currentState = Lifecycle.State.RESUMED
+        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
     }
 
     fun destroy() {
-        registry.currentState = Lifecycle.State.DESTROYED
+        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
     }
 }
 
