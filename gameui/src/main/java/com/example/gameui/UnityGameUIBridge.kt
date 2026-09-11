@@ -11,15 +11,11 @@ object UnityGameUIBridge {
 
     @JvmStatic
     fun show(activity: Activity) {
-
         if (Looper.myLooper() ==
             Looper.getMainLooper()
         ) {
-
             GameMenu.show(activity)
-
         } else {
-
             mainHandler.post {
                 GameMenu.show(activity)
             }
@@ -28,15 +24,11 @@ object UnityGameUIBridge {
 
     @JvmStatic
     fun hide() {
-
         if (Looper.myLooper() ==
             Looper.getMainLooper()
         ) {
-
             GameMenu.hide()
-
         } else {
-
             mainHandler.post {
                 GameMenu.hide()
             }
@@ -46,7 +38,6 @@ object UnityGameUIBridge {
     /**
      * Frida وضعیت Unity را اینجا می‌فرستد.
      *
-     * menu:
      * 0 MAIN
      * 1 LAN
      * 2 COMMUNITY
@@ -59,20 +50,15 @@ object UnityGameUIBridge {
         menu: Int,
         networkActive: Boolean
     ) {
-
         if (Looper.myLooper() ==
             Looper.getMainLooper()
         ) {
-
             GameMenu.setGameState(
                 menu,
                 networkActive
             )
-
         } else {
-
             mainHandler.post {
-
                 GameMenu.setGameState(
                     menu,
                     networkActive
@@ -82,38 +68,61 @@ object UnityGameUIBridge {
     }
 
     /**
-     * فقط UI event.
+     * Custom Start Game button.
      *
-     * هیچ اتصال شبکه‌ای اینجا وجود ندارد.
+     * فقط event را به کد Kotlin می‌دهد.
+     * منطق اتصال در Frida است.
      */
     @JvmStatic
     fun startGame() {
-
         if (Looper.myLooper() ==
             Looper.getMainLooper()
         ) {
-
             GameMenu.onStartGameClicked()
-
         } else {
-
             mainHandler.post {
                 GameMenu.onStartGameClicked()
             }
         }
     }
 
+    /**
+     * Frida این متد را hook می‌کند.
+     *
+     * Kotlin فقط signal می‌دهد.
+     * اجرای StartClient در TypeScript است.
+     */
     @JvmStatic
-    fun showJoinNotification() {
-
+    fun requestStartGame() {
         if (Looper.myLooper() ==
             Looper.getMainLooper()
         ) {
-
-            GameMenu.showJoinNotification()
-
+            GameMenu.onStartGameClicked()
         } else {
+            mainHandler.post {
+                GameMenu.onStartGameClicked()
+            }
+        }
+    }
 
+    /**
+     * Custom Character button event.
+     *
+     * پیاده‌سازی Unity Button.Press() در Frida است.
+     */
+    @JvmStatic
+    fun requestUnityCharacter() {
+        // Intentionally empty.
+        // Frida hooks this static method as a signal.
+    }
+
+    @JvmStatic
+    fun showJoinNotification() {
+        if (Looper.myLooper() ==
+            Looper.getMainLooper()
+        ) {
+            GameMenu.showJoinNotification()
+        } else {
             mainHandler.post {
                 GameMenu.showJoinNotification()
             }
@@ -122,15 +131,11 @@ object UnityGameUIBridge {
 
     @JvmStatic
     fun openCharacter() {
-
         if (Looper.myLooper() ==
             Looper.getMainLooper()
         ) {
-
             GameMenu.openCharacterFromBridge()
-
         } else {
-
             mainHandler.post {
                 GameMenu.openCharacterFromBridge()
             }

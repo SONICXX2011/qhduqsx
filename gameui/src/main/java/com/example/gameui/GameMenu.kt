@@ -1,9 +1,11 @@
 package com.example.gameui
 
 import android.app.Activity
+import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.View
 import android.view.ViewGroup
 
 import androidx.compose.foundation.background
@@ -47,11 +49,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.ViewTreeLifecycleOwner
 
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.SavedStateRegistryController
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import androidx.savedstate.ViewTreeSavedStateRegistryOwner
 
 
 object GameMenu {
@@ -62,19 +64,22 @@ object GameMenu {
         Handler(Looper.getMainLooper())
 
     @Volatile
-    private var currentGameMenu = -1
+    private var currentGameMenu: Int = -1
 
     @Volatile
-    private var networkActive = false
+    private var networkActive: Boolean = false
 
     private var composeView: ComposeView? = null
+
     private var lifecycleOwner: GameLifecycleOwner? = null
 
     private var visible by mutableStateOf(false)
+
     private var currentPage by mutableStateOf(Page.MAIN)
+
     private var notificationText by mutableStateOf<String?>(null)
 
-    private var notificationToken = 0L
+    private var notificationToken: Long = 0L
 
     private enum class Page {
         MAIN,
@@ -113,54 +118,77 @@ object GameMenu {
                 return
             }
 
-            /*
-             * Reuse existing view.
-             */
-            val existing = composeView
+            val existingView =
+                composeView
 
-            if (existing != null) {
+            if (existingView != null) {
 
-                val owner = lifecycleOwner
+                val owner =
+                    lifecycleOwner
 
                 if (owner != null) {
-                    decorView.setViewTreeLifecycleOwner(owner)
-                    decorView.setViewTreeSavedStateRegistryOwner(owner)
 
-                    existing.setViewTreeLifecycleOwner(owner)
-                    existing.setViewTreeSavedStateRegistryOwner(owner)
+                    ViewTreeLifecycleOwner.set(
+                        decorView,
+                        owner
+                    )
+
+                    ViewTreeSavedStateRegistryOwner.set(
+                        decorView,
+                        owner
+                    )
+
+                    ViewTreeLifecycleOwner.set(
+                        existingView,
+                        owner
+                    )
+
+                    ViewTreeSavedStateRegistryOwner.set(
+                        existingView,
+                        owner
+                    )
                 }
 
-                if (existing.parent == null) {
-                    decorView.addView(existing)
+                if (existingView.parent == null) {
+                    decorView.addView(existingView)
                 }
 
                 updateVisibility()
 
-                Log.d(TAG, "show(): existing ComposeView reused")
+                Log.d(
+                    TAG,
+                    "show(): existing ComposeView reused"
+                )
+
                 return
             }
 
             /*
-             * Create one owner implementing BOTH:
-             *
-             * LifecycleOwner
-             * SavedStateRegistryOwner
+             * Lifecycle + SavedState owner
              */
             val owner =
                 GameLifecycleOwner()
 
             owner.attachAndRestore()
 
-            lifecycleOwner = owner
+            lifecycleOwner =
+                owner
 
             /*
-             * VERY IMPORTANT:
+             * IMPORTANT:
              *
-             * Set both owners on DecorView BEFORE attaching
-             * ComposeView to the window.
+             * Both owners are installed BEFORE
+             * ComposeView is attached.
              */
-            decorView.setViewTreeLifecycleOwner(owner)
-            decorView.setViewTreeSavedStateRegistryOwner(owner)
+            ViewTreeLifecycleOwner.set(
+                decorView,
+                owner
+            )
+
+            ViewTreeSavedStateRegistryOwner.set(
+                decorView,
+                owner
+            )
 
             /*
              * Create ComposeView.
@@ -169,10 +197,30 @@ object GameMenu {
                 ComposeView(activity)
 
             /*
-             * Also explicitly set both owners on ComposeView.
+             * Explicitly install both owners on ComposeView.
              */
-            view.setViewTreeLifecycleOwner(owner)
-            view.setViewTreeSavedStateRegistryOwner(owner)
+            ViewTreeLifecycleOwner.set(
+                view,
+                owner
+            )
+
+            ViewTreeSavedStateRegistryOwner.set(
+                view,
+                owner
+            )
+
+            /*
+             * Transparent background.
+             *
+             * This prevents the custom UI from adding
+             * a dark full-screen background.
+             */
+            view.setBackgroundColor(
+                Color.TRANSPARENT
+            )
+
+            view.alpha =
+                1f
 
             view.layoutParams =
                 ViewGroup.LayoutParams(
@@ -181,34 +229,34 @@ object GameMenu {
                 )
 
             /*
-             * Start hidden.
+             * Hidden until Frida says:
+             * setGameState(0, false)
              */
             view.visibility =
-                android.view.View.GONE
+                View.GONE
 
             /*
-             * Create composition.
+             * Compose content.
              */
             view.setContent {
                 GameMenuRoot()
             }
 
-            /*
-             * Save reference before attaching.
-             */
             composeView =
                 view
 
             /*
-             * Attach only AFTER owners are installed.
+             * Attach after ViewTree owners exist.
              */
-            decorView.addView(view)
+            decorView.addView(
+                view
+            )
 
             updateVisibility()
 
             Log.d(
                 TAG,
-                "show(): ComposeView created successfully"
+                "show(): ComposeView created and attached"
             )
 
         } catch (t: Throwable) {
@@ -219,14 +267,16 @@ object GameMenu {
                 t
             )
 
-            composeView = null
+            composeView =
+                null
 
             try {
                 lifecycleOwner?.destroy()
             } catch (_: Throwable) {
             }
 
-            lifecycleOwner = null
+            lifecycleOwner =
+                null
         }
     }
 
@@ -244,24 +294,20 @@ object GameMenu {
             return
         }
 
-        try {
-            visible = false
-            composeView?.visibility = android.view.View.GONE
+        visible =
+            false
 
-            Log.d(TAG, "hide()")
+        composeView?.visibility =
+            View.GONE
 
-        } catch (t: Throwable) {
-
-            Log.e(
-                TAG,
-                "hide(): failed",
-                t
-            )
-        }
+        Log.d(
+            TAG,
+            "hide()"
+        )
     }
 
     // =========================================================
-    // GAME STATE
+    // FRIDA STATE
     // =========================================================
 
     @JvmStatic
@@ -271,80 +317,56 @@ object GameMenu {
     ) {
 
         if (Looper.myLooper() != Looper.getMainLooper()) {
-
             mainHandler.post {
                 setGameState(
                     menu,
                     active
                 )
             }
-
             return
         }
 
-        try {
+        currentGameMenu =
+            menu
 
-            currentGameMenu =
-                menu
+        networkActive =
+            active
 
-            networkActive =
-                active
+        when {
 
-            when {
-
-                /*
-                 * Network active:
-                 * hide custom UI.
-                 */
-                active -> {
-                    visible = false
-                }
-
-                /*
-                 * MAIN
-                 */
-                menu == 0 -> {
-
-                    currentPage =
-                        Page.MAIN
-
-                    visible = true
-                }
-
-                /*
-                 * CHARACTER
-                 */
-                menu == 3 -> {
-
-                    currentPage =
-                        Page.CHARACTER
-
-                    visible = true
-                }
-
-                /*
-                 * LAN / COMMUNITY / SETTINGS / ABOUT
-                 */
-                else -> {
-                    visible = false
-                }
+            active -> {
+                visible =
+                    false
             }
 
-            updateVisibility()
+            menu == 0 -> {
+                currentPage =
+                    Page.MAIN
 
-            Log.d(
-                TAG,
-                "STATE menu=$menu active=$active page=$currentPage visible=$visible"
-            )
+                visible =
+                    true
+            }
 
-        } catch (t: Throwable) {
+            menu == 3 -> {
+                currentPage =
+                    Page.CHARACTER
 
-            Log.e(
-                TAG,
-                "setGameState(): failed",
-                t
-            )
+                visible =
+                    true
+            }
+
+            else -> {
+                visible =
+                    false
+            }
         }
+
+        updateVisibility()
+
+        Log.d(
+            TAG,
+            "STATE menu=$menu active=$active page=$currentPage visible=$visible"
+        )
     }
 
     // =========================================================
@@ -370,11 +392,9 @@ object GameMenu {
     fun showJoinNotification() {
 
         if (Looper.myLooper() != Looper.getMainLooper()) {
-
             mainHandler.post {
                 showJoinNotification()
             }
-
             return
         }
 
@@ -388,29 +408,25 @@ object GameMenu {
 
         mainHandler.postDelayed(
             {
-
                 if (notificationToken == token) {
                     notificationText = null
                 }
-
             },
             3000L
         )
     }
 
     // =========================================================
-    // CHARACTER BRIDGE
+    // CHARACTER
     // =========================================================
 
     @JvmStatic
     fun openCharacterFromBridge() {
 
         if (Looper.myLooper() != Looper.getMainLooper()) {
-
             mainHandler.post {
                 openCharacterFromBridge()
             }
-
             return
         }
 
@@ -418,7 +434,8 @@ object GameMenu {
             Page.CHARACTER
 
         if (!networkActive) {
-            visible = true
+            visible =
+                true
         }
 
         updateVisibility()
@@ -435,25 +452,28 @@ object GameMenu {
     }
 
     // =========================================================
-    // UPDATE VISIBILITY
+    // VISIBILITY
     // =========================================================
 
     private fun updateVisibility() {
 
         val view =
-            composeView ?: return
+            composeView
+                ?: return
 
         val shouldShow =
-            visible && !networkActive
+            visible &&
+                !networkActive
 
         view.visibility =
             if (shouldShow) {
-                android.view.View.VISIBLE
+                View.VISIBLE
             } else {
-                android.view.View.GONE
+                View.GONE
             }
 
-        view.alpha = 1f
+        view.alpha =
+            1f
     }
 
     // =========================================================
@@ -499,7 +519,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // MAIN
+    // MAIN PAGE
     // =========================================================
 
     @Composable
@@ -531,6 +551,9 @@ object GameMenu {
                     Alignment.CenterVertically
             ) {
 
+                /*
+                 * Character
+                 */
                 GlassButton(
                     modifier =
                         Modifier.width(118.dp),
@@ -542,8 +565,16 @@ object GameMenu {
                         Accent.GOLD,
 
                     onClick = {
+
                         currentPage =
                             Page.CHARACTER
+
+                        /*
+                         * Signal Frida to press the
+                         * original Unity Character button.
+                         */
+                        UnityGameUIBridge
+                            .requestUnityCharacter()
                     }
                 )
 
@@ -552,6 +583,9 @@ object GameMenu {
                         Modifier.width(12.dp)
                 )
 
+                /*
+                 * Start Game
+                 */
                 GlassButton(
                     modifier =
                         Modifier.width(138.dp),
@@ -563,7 +597,13 @@ object GameMenu {
                         Accent.GREEN,
 
                     onClick = {
-                        onStartGameClicked()
+
+                        /*
+                         * Signal Frida.
+                         * Frida performs actual connection.
+                         */
+                        UnityGameUIBridge
+                            .requestStartGame()
                     }
                 )
 
@@ -572,6 +612,9 @@ object GameMenu {
                         Modifier.width(12.dp)
                 )
 
+                /*
+                 * Help
+                 */
                 GlassButton(
                     modifier =
                         Modifier.width(105.dp),
@@ -583,6 +626,7 @@ object GameMenu {
                         Accent.BLUE,
 
                     onClick = {
+
                         currentPage =
                             Page.HELP
                     }
@@ -592,7 +636,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // CHARACTER
+    // CHARACTER PAGE
     // =========================================================
 
     @Composable
@@ -763,6 +807,7 @@ object GameMenu {
                             Accent.GREEN,
 
                         onClick = {
+
                             currentPage =
                                 Page.LOGIN
                         }
@@ -773,7 +818,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // LOGIN
+    // LOGIN PAGE
     // =========================================================
 
     @Composable
@@ -857,7 +902,8 @@ object GameMenu {
                             password,
 
                         onValueChange = {
-                            password = it
+                            password =
+                                it
                         },
 
                         modifier =
@@ -961,7 +1007,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // HELP
+    // HELP PAGE
     // =========================================================
 
     @Composable
@@ -1082,6 +1128,7 @@ object GameMenu {
                             Accent.GREEN,
 
                         onClick = {
+
                             currentPage =
                                 Page.MAIN
                         }
@@ -1150,7 +1197,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // INFO
+    // INFO ROW
     // =========================================================
 
     @Composable
@@ -1214,7 +1261,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // BUTTON
+    // GLASS BUTTON
     // =========================================================
 
     @Composable
@@ -1389,7 +1436,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // NOTIFICATION
+    // JOIN NOTIFICATION
     // =========================================================
 
     @Composable
@@ -1481,7 +1528,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // LIFECYCLE OWNER
+    // LIFECYCLE + SAVED STATE
     // =========================================================
 
     private class GameLifecycleOwner :
@@ -1503,17 +1550,17 @@ object GameMenu {
         override val savedStateRegistry =
             savedStateController.savedStateRegistry
 
-        /*
-         * Correct order:
-         *
-         * 1. performAttach()
-         * 2. performRestore()
-         * 3. ON_CREATE
-         * 4. ON_START
-         * 5. ON_RESUME
-         */
         fun attachAndRestore() {
 
+            /*
+             * Correct order:
+             *
+             * 1. Attach
+             * 2. Restore
+             * 3. CREATE
+             * 4. START
+             * 5. RESUME
+             */
             savedStateController.performAttach()
 
             savedStateController.performRestore(
