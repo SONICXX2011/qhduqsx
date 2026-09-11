@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +54,9 @@ object GameMenu {
 
     private const val TAG = "GameMenu"
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler =
+        Handler(Looper.getMainLooper())
+
 
     /*
      * =========================================================
@@ -74,15 +77,19 @@ object GameMenu {
     @Volatile
     private var networkActive: Boolean = false
 
+
     /*
      * =========================================================
-     * View / lifecycle
+     * View state
      * =========================================================
      */
 
     private var composeView: ComposeView? = null
 
     private var lifecycleOwner: GameLifecycleOwner? = null
+
+    private var ownerTagId: Int = 0
+
 
     /*
      * =========================================================
@@ -96,7 +103,7 @@ object GameMenu {
 
     private var notificationText by mutableStateOf<String?>(null)
 
-    private var notificationToken = 0L
+    private var notificationToken: Long = 0L
 
 
     private enum class Page {
@@ -114,11 +121,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * SHOW
-     * =========================================================
-     */
+    // =========================================================
+    // SHOW
+    // =========================================================
 
     @JvmStatic
     fun show(activity: Activity) {
@@ -132,19 +137,42 @@ object GameMenu {
             return
         }
 
+
         try {
 
+            val decorView =
+                activity.window?.decorView as? ViewGroup
+
+            if (decorView == null) {
+
+                Log.e(
+                    TAG,
+                    "show(): DecorView is null"
+                )
+
+                return
+            }
+
+
             /*
-             * If already created, just make sure it is attached.
+             * =================================================
+             * Existing view
+             * =================================================
              */
-            val existingView = composeView
+
+            val existingView =
+                composeView
 
             if (existingView != null) {
 
+                ensureLifecycleOwner(
+                    activity,
+                    decorView
+                )
+
                 if (existingView.parent == null) {
 
-                    attachToActivity(
-                        activity,
+                    decorView.addView(
                         existingView
                     )
                 }
@@ -153,7 +181,7 @@ object GameMenu {
 
                 Log.d(
                     TAG,
-                    "show(): existing ComposeView"
+                    "show(): existing view reused"
                 )
 
                 return
@@ -161,52 +189,130 @@ object GameMenu {
 
 
             /*
-             * Create lifecycle owner for Compose.
+             * =================================================
+             * Create lifecycle owner
+             * =================================================
              *
-             * We intentionally do NOT use SavedStateRegistry.
+             * No SavedStateRegistry.
+             *
+             * No Recreator.
+             *
+             * No saved-state restoration.
+             *
+             * This is intentional because Unity's
+             * UnityPlayerActivity is a normal Activity.
              */
-            val owner = GameLifecycleOwner()
 
-            lifecycleOwner = owner
+            val owner =
+                GameLifecycleOwner()
 
             owner.start()
 
-
-            /*
-             * Create ComposeView.
-             */
-            val view = ComposeView(activity)
-
-            composeView = view
+            lifecycleOwner =
+                owner
 
 
             /*
-             * Set lifecycle owner directly.
+             * =================================================
+             * Find ViewTreeLifecycleOwner tag ID
+             * =================================================
              *
-             * No SavedStateRegistry.
+             * We don't call setViewTreeLifecycleOwner()
+             * because the project dependency/API combination
+             * previously failed to resolve that extension.
+             *
+             * Instead we use the actual ViewTree tag.
              */
-            view.setTag(
-                androidx.lifecycle.runtime.R.id.view_tree_lifecycle_owner,
+
+            val tagId =
+                findLifecycleOwnerTagId(
+                    activity
+                )
+
+            if (tagId == 0) {
+
+                Log.e(
+                    TAG,
+                    "show(): view_tree_lifecycle_owner resource not found"
+                )
+
+                owner.destroy()
+
+                lifecycleOwner = null
+
+                return
+            }
+
+            ownerTagId = tagId
+
+
+            /*
+             * IMPORTANT:
+             *
+             * The owner MUST be on the DecorView/tree parent,
+             * not only on ComposeView.
+             *
+             * Compose's WindowRecomposer searches from the
+             * attached view to the root.
+             */
+
+            decorView.setTag(
+                tagId,
                 owner
             )
 
 
-            view.layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+            /*
+             * =================================================
+             * Create ComposeView
+             * =================================================
+             */
+
+            val view =
+                ComposeView(activity)
+
+            composeView =
+                view
+
+
+            /*
+             * Also put the same owner on ComposeView.
+             *
+             * DecorView is the critical one, but this is harmless
+             * and makes the tree explicit.
+             */
+
+            view.setTag(
+                tagId,
+                owner
             )
 
 
-            /*
-             * Initial state:
-             * hidden until Frida sends setGameState().
-             */
-            view.visibility = View.GONE
+            view.layoutParams =
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
 
 
             /*
-             * Compose content.
+             * Start hidden.
+             *
+             * Frida later sends:
+             *
+             * setGameState(0, false)
              */
+
+            view.visibility =
+                View.GONE
+
+
+            /*
+             * =================================================
+             * Compose content
+             * =================================================
+             */
+
             view.setContent {
 
                 GameMenuRoot()
@@ -214,41 +320,150 @@ object GameMenu {
 
 
             /*
-             * Attach to Unity Activity.
+             * =================================================
+             * Attach to Unity window
+             * =================================================
              */
-            attachToActivity(
-                activity,
+
+            decorView.addView(
                 view
             )
 
 
             /*
-             * Keep hidden initially.
+             * Apply initial visibility.
              */
+
             updateVisibility()
 
 
             Log.d(
                 TAG,
-                "show(): UI initialized"
+                "show(): ComposeView created and attached"
             )
 
         } catch (t: Throwable) {
 
             Log.e(
                 TAG,
-                "show() failed",
+                "show(): fatal error",
+                t
+            )
+
+            composeView =
+                null
+
+            lifecycleOwner?.destroy()
+
+            lifecycleOwner =
+                null
+        }
+    }
+
+
+    // =========================================================
+    // FIND LIFECYCLE TAG
+    // =========================================================
+
+    private fun findLifecycleOwnerTagId(
+        activity: Activity
+    ): Int {
+
+        /*
+         * First try the application's merged resources.
+         */
+        var id =
+            activity.resources.getIdentifier(
+                "view_tree_lifecycle_owner",
+                "id",
+                activity.packageName
+            )
+
+
+        /*
+         * Fallback.
+         *
+         * Usually the merged application package is enough,
+         * but keep this fallback for different packaging layouts.
+         */
+        if (id == 0) {
+
+            id =
+                activity.resources.getIdentifier(
+                    "view_tree_lifecycle_owner",
+                    "id",
+                    "androidx.lifecycle"
+                )
+        }
+
+
+        return id
+    }
+
+
+    // =========================================================
+    // ENSURE OWNER
+    // =========================================================
+
+    private fun ensureLifecycleOwner(
+        activity: Activity,
+        decorView: ViewGroup
+    ) {
+
+        try {
+
+            var owner =
+                lifecycleOwner
+
+
+            if (owner == null) {
+
+                owner =
+                    GameLifecycleOwner()
+
+                owner.start()
+
+                lifecycleOwner =
+                    owner
+            }
+
+
+            if (ownerTagId == 0) {
+
+                ownerTagId =
+                    findLifecycleOwnerTagId(
+                        activity
+                    )
+            }
+
+
+            if (ownerTagId != 0) {
+
+                decorView.setTag(
+                    ownerTagId,
+                    owner
+                )
+
+                composeView?.setTag(
+                    ownerTagId,
+                    owner
+                )
+            }
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "ensureLifecycleOwner() failed",
                 t
             )
         }
     }
 
 
-    /*
-     * =========================================================
-     * HIDE
-     * =========================================================
-     */
+    // =========================================================
+    // HIDE
+    // =========================================================
 
     @JvmStatic
     fun hide() {
@@ -262,11 +477,15 @@ object GameMenu {
             return
         }
 
+
         try {
 
-            visible = false
+            visible =
+                false
 
-            composeView?.visibility = View.GONE
+            composeView?.visibility =
+                View.GONE
+
 
             Log.d(
                 TAG,
@@ -284,11 +503,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * FRIDA STATE BRIDGE
-     * =========================================================
-     */
+    // =========================================================
+    // SET GAME STATE
+    // =========================================================
 
     @JvmStatic
     fun setGameState(
@@ -312,20 +529,23 @@ object GameMenu {
 
         try {
 
-            currentGameMenu = menu
+            currentGameMenu =
+                menu
 
-            networkActive = active
+            networkActive =
+                active
 
 
             when {
 
                 /*
                  * Network active:
-                 * hide custom UI.
+                 * custom UI hidden.
                  */
                 active -> {
 
-                    visible = false
+                    visible =
+                        false
                 }
 
 
@@ -334,9 +554,11 @@ object GameMenu {
                  */
                 menu == 0 -> {
 
-                    currentPage = Page.MAIN
+                    currentPage =
+                        Page.MAIN
 
-                    visible = true
+                    visible =
+                        true
                 }
 
 
@@ -345,19 +567,21 @@ object GameMenu {
                  */
                 menu == 3 -> {
 
-                    currentPage = Page.CHARACTER
+                    currentPage =
+                        Page.CHARACTER
 
-                    visible = true
+                    visible =
+                        true
                 }
 
 
                 /*
-                 * Everything else:
-                 * hide custom UI.
+                 * LAN / COMMUNITY / SETTINGS / ABOUT.
                  */
                 else -> {
 
-                    visible = false
+                    visible =
+                        false
                 }
             }
 
@@ -381,15 +605,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * START GAME
-     * =========================================================
-     *
-     * UI only.
-     *
-     * No networking.
-     */
+    // =========================================================
+    // START GAME
+    // =========================================================
 
     @JvmStatic
     fun onStartGameClicked() {
@@ -403,11 +621,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * JOIN NOTIFICATION
-     * =========================================================
-     */
+    // =========================================================
+    // JOIN NOTIFICATION
+    // =========================================================
 
     @JvmStatic
     fun showJoinNotification() {
@@ -424,7 +640,9 @@ object GameMenu {
 
         notificationToken++
 
-        val token = notificationToken
+        val token =
+            notificationToken
+
 
         notificationText =
             "درحال پیوستن به سرور..."
@@ -433,9 +651,13 @@ object GameMenu {
         mainHandler.postDelayed(
             {
 
-                if (notificationToken == token) {
+                if (
+                    notificationToken ==
+                    token
+                ) {
 
-                    notificationText = null
+                    notificationText =
+                        null
                 }
 
             },
@@ -444,11 +666,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * CHARACTER
-     * =========================================================
-     */
+    // =========================================================
+    // OPEN CHARACTER
+    // =========================================================
 
     @JvmStatic
     fun openCharacterFromBridge() {
@@ -463,12 +683,14 @@ object GameMenu {
         }
 
 
-        currentPage = Page.CHARACTER
+        currentPage =
+            Page.CHARACTER
 
 
         if (!networkActive) {
 
-            visible = true
+            visible =
+                true
         }
 
 
@@ -489,11 +711,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * ATTACH
-     * =========================================================
-     */
+    // =========================================================
+    // ATTACH
+    // =========================================================
 
     private fun attachToActivity(
         activity: Activity,
@@ -502,43 +722,29 @@ object GameMenu {
 
         try {
 
-            val decor =
-                activity.window?.decorView as? ViewGroup
+            val decorView =
+                activity.window?.decorView
+                    as? ViewGroup
 
 
-            if (decor == null) {
+            if (decorView == null) {
 
                 Log.e(
                     TAG,
-                    "attachToActivity(): decor is null"
+                    "attachToActivity(): DecorView is null"
                 )
 
                 return
             }
 
 
-            val currentParent =
-                view.parent as? ViewGroup
-
-
-            if (currentParent != null &&
-                currentParent !== decor
-            ) {
-
-                currentParent.removeView(view)
-            }
-
-
             if (view.parent == null) {
 
-                decor.addView(view)
+                decorView.addView(
+                    view
+                )
             }
 
-
-            Log.d(
-                TAG,
-                "ComposeView attached"
-            )
 
         } catch (t: Throwable) {
 
@@ -551,20 +757,20 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * VISIBILITY
-     * =========================================================
-     */
+    // =========================================================
+    // UPDATE VISIBILITY
+    // =========================================================
 
     private fun updateVisibility() {
 
-        val view = composeView
-            ?: return
+        val view =
+            composeView
+                ?: return
 
 
         val shouldShow =
-            visible && !networkActive
+            visible &&
+                !networkActive
 
 
         view.visibility =
@@ -573,23 +779,30 @@ object GameMenu {
             } else {
                 View.GONE
             }
+
+
+        view.alpha =
+            1f
     }
 
 
-    /*
-     * =========================================================
-     * ROOT
-     * =========================================================
-     */
+    // =========================================================
+    // ROOT
+    // =========================================================
 
     @Composable
     private fun GameMenuRoot() {
 
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier =
+                Modifier.fillMaxSize()
         ) {
 
-            if (visible && !networkActive) {
+
+            if (
+                visible &&
+                !networkActive
+            ) {
 
                 when (currentPage) {
 
@@ -626,31 +839,31 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * MAIN
-     * =========================================================
-     */
+    // =========================================================
+    // MAIN PAGE
+    // =========================================================
 
     @Composable
     private fun MainPage() {
 
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier =
+                Modifier.fillMaxSize()
         ) {
 
             Row(
-                modifier = Modifier
-                    .align(
-                        Alignment.BottomCenter
-                    )
-                    .padding(
-                        start = 18.dp,
-                        end = 18.dp,
-                        bottom = 38.dp
-                    )
-                    .fillMaxWidth()
-                    .wrapContentHeight(),
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.BottomCenter
+                        )
+                        .padding(
+                            start = 18.dp,
+                            end = 18.dp,
+                            bottom = 38.dp
+                        )
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
 
                 horizontalArrangement =
                     Arrangement.Center,
@@ -660,16 +873,15 @@ object GameMenu {
             ) {
 
 
-                /*
-                 * Character
-                 */
                 GlassButton(
                     modifier =
                         Modifier.width(118.dp),
 
-                    text = "Character",
+                    text =
+                        "Character",
 
-                    accent = Accent.GOLD,
+                    accent =
+                        Accent.GOLD,
 
                     onClick = {
 
@@ -685,16 +897,15 @@ object GameMenu {
                 )
 
 
-                /*
-                 * Start Game
-                 */
                 GlassButton(
                     modifier =
                         Modifier.width(138.dp),
 
-                    text = "Start Game",
+                    text =
+                        "Start Game",
 
-                    accent = Accent.GREEN,
+                    accent =
+                        Accent.GREEN,
 
                     onClick = {
 
@@ -709,19 +920,15 @@ object GameMenu {
                 )
 
 
-                /*
-                 * Help
-                 *
-                 * Question-mark is plain text.
-                 * No material icon dependency.
-                 */
                 GlassButton(
                     modifier =
                         Modifier.width(105.dp),
 
-                    text = "?  Help",
+                    text =
+                        "?  Help",
 
-                    accent = Accent.BLUE,
+                    accent =
+                        Accent.BLUE,
 
                     onClick = {
 
@@ -734,21 +941,22 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * CHARACTER PAGE
-     * =========================================================
-     */
+    // =========================================================
+    // CHARACTER PAGE
+    // =========================================================
 
     @Composable
     private fun CharacterPage() {
 
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier =
+                Modifier.fillMaxSize()
         ) {
 
+
             GlassHeader(
-                title = "Character",
+                title =
+                    "Character",
 
                 onBack = {
 
@@ -759,34 +967,47 @@ object GameMenu {
 
 
             Surface(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(
-                        horizontal = 22.dp
-                    )
-                    .fillMaxWidth()
-                    .wrapContentHeight(),
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.Center
+                        )
+                        .padding(
+                            horizontal = 22.dp
+                        )
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(24.dp),
+                    RoundedCornerShape(
+                        24.dp
+                    ),
 
                 color =
-                    ComposeColor(0xCC101816)
+                    ComposeColor(
+                        0xCC101816
+                    )
             ) {
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                24.dp
+                            ),
 
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
 
-                    Text(
-                        text = "CHARACTER",
 
-                        fontSize = 22.sp,
+                    Text(
+                        text =
+                            "CHARACTER",
+
+                        fontSize =
+                            22.sp,
 
                         fontWeight =
                             FontWeight.Bold,
@@ -798,56 +1019,61 @@ object GameMenu {
 
                     Spacer(
                         modifier =
-                            Modifier.height(18.dp)
+                            Modifier.height(
+                                18.dp
+                            )
                     )
 
 
-                    /*
-                     * Character placeholder
-                     */
                     Box(
-                        modifier = Modifier
-                            .size(120.dp)
-                            .background(
-                                brush =
-                                    Brush.linearGradient(
-                                        listOf(
-                                            ComposeColor(
-                                                0xFF173529
-                                            ),
-                                            ComposeColor(
-                                                0xFF0D1713
+                        modifier =
+                            Modifier
+                                .size(
+                                    120.dp
+                                )
+                                .background(
+                                    brush =
+                                        Brush.linearGradient(
+                                            listOf(
+                                                ComposeColor(
+                                                    0xFF173529
+                                                ),
+                                                ComposeColor(
+                                                    0xFF0D1713
+                                                )
                                             )
+                                        ),
+
+                                    shape =
+                                        RoundedCornerShape(
+                                            28.dp
                                         )
-                                    ),
+                                )
+                                .border(
+                                    width =
+                                        1.dp,
 
-                                shape =
-                                    RoundedCornerShape(
-                                        28.dp
-                                    )
-                            )
-                            .border(
-                                width = 1.dp,
+                                    color =
+                                        ComposeColor(
+                                            0x5548E39A
+                                        ),
 
-                                color =
-                                    ComposeColor(
-                                        0x5548E39A
-                                    ),
-
-                                shape =
-                                    RoundedCornerShape(
-                                        28.dp
-                                    )
-                            ),
+                                    shape =
+                                        RoundedCornerShape(
+                                            28.dp
+                                        )
+                                ),
 
                         contentAlignment =
                             Alignment.Center
                     ) {
 
                         Text(
-                            text = "C",
+                            text =
+                                "C",
 
-                            fontSize = 54.sp,
+                            fontSize =
+                                54.sp,
 
                             fontWeight =
                                 FontWeight.Black,
@@ -862,31 +1088,43 @@ object GameMenu {
 
                     Spacer(
                         modifier =
-                            Modifier.height(22.dp)
+                            Modifier.height(
+                                22.dp
+                            )
                     )
 
 
                     InfoRow(
-                        title = "Role",
-                        value = "Null"
+                        title =
+                            "Role",
+
+                        value =
+                            "Null"
                     )
 
 
                     Spacer(
                         modifier =
-                            Modifier.height(10.dp)
+                            Modifier.height(
+                                10.dp
+                            )
                     )
 
 
                     InfoRow(
-                        title = "Money",
-                        value = "Null"
+                        title =
+                            "Money",
+
+                        value =
+                            "Null"
                     )
 
 
                     Spacer(
                         modifier =
-                            Modifier.height(22.dp)
+                            Modifier.height(
+                                22.dp
+                            )
                     )
 
 
@@ -894,9 +1132,11 @@ object GameMenu {
                         modifier =
                             Modifier.fillMaxWidth(),
 
-                        text = "Login / Register",
+                        text =
+                            "Login / Register",
 
-                        accent = Accent.GREEN,
+                        accent =
+                            Accent.GREEN,
 
                         onClick = {
 
@@ -910,29 +1150,34 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * LOGIN PAGE
-     * =========================================================
-     */
+    // =========================================================
+    // LOGIN PAGE
+    // =========================================================
 
     @Composable
     private fun LoginPage() {
 
         var password by
-            mutableStateOf("")
+            remember {
+                mutableStateOf("")
+            }
 
 
         var confirmPassword by
-            mutableStateOf("")
+            remember {
+                mutableStateOf("")
+            }
 
 
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier =
+                Modifier.fillMaxSize()
         ) {
 
+
             GlassHeader(
-                title = "Login / Register",
+                title =
+                    "Login / Register",
 
                 onBack = {
 
@@ -943,16 +1188,21 @@ object GameMenu {
 
 
             Surface(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(
-                        horizontal = 22.dp
-                    )
-                    .fillMaxWidth()
-                    .wrapContentHeight(),
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.Center
+                        )
+                        .padding(
+                            horizontal = 22.dp
+                        )
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(24.dp),
+                    RoundedCornerShape(
+                        24.dp
+                    ),
 
                 color =
                     ComposeColor(
@@ -961,18 +1211,24 @@ object GameMenu {
             ) {
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(22.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                22.dp
+                            ),
 
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
 
-                    Text(
-                        text = "ACCOUNT",
 
-                        fontSize = 21.sp,
+                    Text(
+                        text =
+                            "ACCOUNT",
+
+                        fontSize =
+                            21.sp,
 
                         fontWeight =
                             FontWeight.Bold,
@@ -984,12 +1240,15 @@ object GameMenu {
 
                     Spacer(
                         modifier =
-                            Modifier.height(18.dp)
+                            Modifier.height(
+                                18.dp
+                            )
                     )
 
 
                     OutlinedTextField(
-                        value = password,
+                        value =
+                            password,
 
                         onValueChange = {
                             password = it
@@ -998,10 +1257,13 @@ object GameMenu {
                         modifier =
                             Modifier.fillMaxWidth(),
 
-                        singleLine = true,
+                        singleLine =
+                            true,
 
                         label = {
-                            Text("Password")
+                            Text(
+                                "Password"
+                            )
                         },
 
                         visualTransformation =
@@ -1011,7 +1273,9 @@ object GameMenu {
 
                     Spacer(
                         modifier =
-                            Modifier.height(12.dp)
+                            Modifier.height(
+                                12.dp
+                            )
                     )
 
 
@@ -1026,7 +1290,8 @@ object GameMenu {
                         modifier =
                             Modifier.fillMaxWidth(),
 
-                        singleLine = true,
+                        singleLine =
+                            true,
 
                         label = {
                             Text(
@@ -1041,31 +1306,43 @@ object GameMenu {
 
                     Spacer(
                         modifier =
-                            Modifier.height(18.dp)
+                            Modifier.height(
+                                18.dp
+                            )
                     )
 
 
                     InfoRow(
-                        title = "Role",
-                        value = "Null"
+                        title =
+                            "Role",
+
+                        value =
+                            "Null"
                     )
 
 
                     Spacer(
                         modifier =
-                            Modifier.height(8.dp)
+                            Modifier.height(
+                                8.dp
+                            )
                     )
 
 
                     InfoRow(
-                        title = "Money",
-                        value = "Null"
+                        title =
+                            "Money",
+
+                        value =
+                            "Null"
                     )
 
 
                     Spacer(
                         modifier =
-                            Modifier.height(18.dp)
+                            Modifier.height(
+                                18.dp
+                            )
                     )
 
 
@@ -1073,9 +1350,11 @@ object GameMenu {
                         modifier =
                             Modifier.fillMaxWidth(),
 
-                        text = "Continue",
+                        text =
+                            "Continue",
 
-                        accent = Accent.GREEN,
+                        accent =
+                            Accent.GREEN,
 
                         onClick = {
 
@@ -1091,21 +1370,22 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * HELP PAGE
-     * =========================================================
-     */
+    // =========================================================
+    // HELP PAGE
+    // =========================================================
 
     @Composable
     private fun HelpPage() {
 
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier =
+                Modifier.fillMaxSize()
         ) {
 
+
             GlassHeader(
-                title = "Help",
+                title =
+                    "Help",
 
                 onBack = {
 
@@ -1116,16 +1396,21 @@ object GameMenu {
 
 
             Surface(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(
-                        horizontal = 22.dp
-                    )
-                    .fillMaxWidth()
-                    .wrapContentHeight(),
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.Center
+                        )
+                        .padding(
+                            horizontal = 22.dp
+                        )
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(24.dp),
+                    RoundedCornerShape(
+                        24.dp
+                    ),
 
                 color =
                     ComposeColor(
@@ -1134,18 +1419,24 @@ object GameMenu {
             ) {
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(30.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                30.dp
+                            ),
 
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
 
-                    Text(
-                        text = "?",
 
-                        fontSize = 50.sp,
+                    Text(
+                        text =
+                            "?",
+
+                        fontSize =
+                            50.sp,
 
                         fontWeight =
                             FontWeight.Black,
@@ -1159,14 +1450,18 @@ object GameMenu {
 
                     Spacer(
                         modifier =
-                            Modifier.height(12.dp)
+                            Modifier.height(
+                                12.dp
+                            )
                     )
 
 
                     Text(
-                        text = "به زودی",
+                        text =
+                            "به زودی",
 
-                        fontSize = 24.sp,
+                        fontSize =
+                            24.sp,
 
                         fontWeight =
                             FontWeight.Bold,
@@ -1178,7 +1473,9 @@ object GameMenu {
 
                     Spacer(
                         modifier =
-                            Modifier.height(10.dp)
+                            Modifier.height(
+                                10.dp
+                            )
                     )
 
 
@@ -1186,7 +1483,8 @@ object GameMenu {
                         text =
                             "Help system will be available soon.",
 
-                        fontSize = 14.sp,
+                        fontSize =
+                            14.sp,
 
                         color =
                             ComposeColor(
@@ -1197,7 +1495,9 @@ object GameMenu {
 
                     Spacer(
                         modifier =
-                            Modifier.height(22.dp)
+                            Modifier.height(
+                                22.dp
+                            )
                     )
 
 
@@ -1205,9 +1505,11 @@ object GameMenu {
                         modifier =
                             Modifier.fillMaxWidth(),
 
-                        text = "Close",
+                        text =
+                            "Close",
 
-                        accent = Accent.GREEN,
+                        accent =
+                            Accent.GREEN,
 
                         onClick = {
 
@@ -1221,11 +1523,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * HEADER
-     * =========================================================
-     */
+    // =========================================================
+    // HEADER
+    // =========================================================
 
     @Composable
     private fun GlassHeader(
@@ -1234,14 +1534,16 @@ object GameMenu {
     ) {
 
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = 18.dp,
-                    end = 18.dp,
-                    top = 30.dp
-                )
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 18.dp,
+                        end = 18.dp,
+                        top = 30.dp
+                    )
         ) {
+
 
             GlassSmallButton(
                 modifier =
@@ -1249,23 +1551,28 @@ object GameMenu {
                         Alignment.CenterStart
                     ),
 
-                text = "<",
+                text =
+                    "<",
 
-                accent = Accent.GREEN,
+                accent =
+                    Accent.GREEN,
 
-                onClick = onBack
+                onClick =
+                    onBack
             )
 
 
             Text(
-                text = title,
+                text =
+                    title,
 
                 modifier =
                     Modifier.align(
                         Alignment.Center
                     ),
 
-                fontSize = 22.sp,
+                fontSize =
+                    22.sp,
 
                 fontWeight =
                     FontWeight.Bold,
@@ -1277,11 +1584,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * INFO ROW
-     * =========================================================
-     */
+    // =========================================================
+    // INFO ROW
+    // =========================================================
 
     @Composable
     private fun InfoRow(
@@ -1290,21 +1595,21 @@ object GameMenu {
     ) {
 
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    ComposeColor(
-                        0x331C2923
-                    ),
-
-                    RoundedCornerShape(
-                        14.dp
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(
+                        ComposeColor(
+                            0x331C2923
+                        ),
+                        RoundedCornerShape(
+                            14.dp
+                        )
                     )
-                )
-                .padding(
-                    horizontal = 16.dp,
-                    vertical = 12.dp
-                ),
+                    .padding(
+                        horizontal = 16.dp,
+                        vertical = 12.dp
+                    ),
 
             horizontalArrangement =
                 Arrangement.SpaceBetween,
@@ -1313,10 +1618,13 @@ object GameMenu {
                 Alignment.CenterVertically
         ) {
 
-            Text(
-                text = title,
 
-                fontSize = 14.sp,
+            Text(
+                text =
+                    title,
+
+                fontSize =
+                    14.sp,
 
                 color =
                     ComposeColor(
@@ -1326,9 +1634,11 @@ object GameMenu {
 
 
             Text(
-                text = value,
+                text =
+                    value,
 
-                fontSize = 15.sp,
+                fontSize =
+                    15.sp,
 
                 fontWeight =
                     FontWeight.Bold,
@@ -1340,11 +1650,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * GLASS BUTTON
-     * =========================================================
-     */
+    // =========================================================
+    // GLASS BUTTON
+    // =========================================================
 
     @Composable
     private fun GlassButton(
@@ -1375,22 +1683,29 @@ object GameMenu {
 
 
         OutlinedButton(
-            onClick = onClick,
+            onClick =
+                onClick,
 
             modifier =
-                modifier.height(52.dp),
+                modifier.height(
+                    52.dp
+                ),
 
             shape =
-                RoundedCornerShape(17.dp),
+                RoundedCornerShape(
+                    17.dp
+                ),
 
             border =
                 androidx.compose.foundation
                     .BorderStroke(
-                        width = 1.dp,
+                        width =
+                            1.dp,
 
                         color =
                             accentColor.copy(
-                                alpha = 0.65f
+                                alpha =
+                                    0.65f
                             )
                     ),
 
@@ -1407,10 +1722,13 @@ object GameMenu {
                     )
         ) {
 
-            Text(
-                text = text,
 
-                fontSize = 14.sp,
+            Text(
+                text =
+                    text,
+
+                fontSize =
+                    14.sp,
 
                 fontWeight =
                     FontWeight.Bold
@@ -1419,11 +1737,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * SMALL BUTTON
-     * =========================================================
-     */
+    // =========================================================
+    // SMALL BUTTON
+    // =========================================================
 
     @Composable
     private fun GlassSmallButton(
@@ -1454,28 +1770,38 @@ object GameMenu {
 
 
         OutlinedButton(
-            onClick = onClick,
+            onClick =
+                onClick,
 
             modifier =
-                modifier.size(48.dp),
+                modifier.size(
+                    48.dp
+                ),
 
             shape =
-                RoundedCornerShape(15.dp),
+                RoundedCornerShape(
+                    15.dp
+                ),
 
             border =
                 androidx.compose.foundation
                     .BorderStroke(
-                        width = 1.dp,
+                        width =
+                            1.dp,
 
                         color =
                             accentColor.copy(
-                                alpha = 0.65f
+                                alpha =
+                                    0.65f
                             )
                     ),
 
             contentPadding =
-                androidx.compose.foundation.layout
-                    .PaddingValues(0.dp),
+                androidx.compose.foundation
+                    .layout
+                    .PaddingValues(
+                        0.dp
+                    ),
 
             colors =
                 ButtonDefaults
@@ -1490,10 +1816,13 @@ object GameMenu {
                     )
         ) {
 
-            Text(
-                text = text,
 
-                fontSize = 21.sp,
+            Text(
+                text =
+                    text,
+
+                fontSize =
+                    21.sp,
 
                 fontWeight =
                     FontWeight.Bold
@@ -1502,11 +1831,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * JOIN NOTIFICATION
-     * =========================================================
-     */
+    // =========================================================
+    // JOIN NOTIFICATION
+    // =========================================================
 
     @Composable
     private fun JoinNotification(
@@ -1514,24 +1841,29 @@ object GameMenu {
     ) {
 
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier =
+                Modifier.fillMaxSize(),
 
             contentAlignment =
                 Alignment.BottomCenter
         ) {
 
+
             Surface(
-                modifier = Modifier
-                    .padding(
-                        start = 24.dp,
-                        end = 24.dp,
-                        bottom = 108.dp
-                    )
-                    .fillMaxWidth()
-                    .wrapContentHeight(),
+                modifier =
+                    Modifier
+                        .padding(
+                            start = 24.dp,
+                            end = 24.dp,
+                            bottom = 108.dp
+                        )
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(18.dp),
+                    RoundedCornerShape(
+                        18.dp
+                    ),
 
                 color =
                     ComposeColor(
@@ -1539,41 +1871,50 @@ object GameMenu {
                     )
             ) {
 
+
                 Row(
-                    modifier = Modifier.padding(
-                        horizontal = 18.dp,
-                        vertical = 15.dp
-                    ),
+                    modifier =
+                        Modifier.padding(
+                            horizontal = 18.dp,
+                            vertical = 15.dp
+                        ),
 
                     verticalAlignment =
                         Alignment.CenterVertically
                 ) {
 
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(
-                                ComposeColor(
-                                    0xFF58E59A
-                                ),
 
-                                RoundedCornerShape(
-                                    50
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(
+                                    10.dp
                                 )
-                            )
+                                .background(
+                                    ComposeColor(
+                                        0xFF58E59A
+                                    ),
+                                    RoundedCornerShape(
+                                        50
+                                    )
+                                )
                     )
 
 
                     Spacer(
                         modifier =
-                            Modifier.width(12.dp)
+                            Modifier.width(
+                                12.dp
+                            )
                     )
 
 
                     Text(
-                        text = text,
+                        text =
+                            text,
 
-                        fontSize = 14.sp,
+                        fontSize =
+                            14.sp,
 
                         fontWeight =
                             FontWeight.Bold,
@@ -1587,16 +1928,9 @@ object GameMenu {
     }
 
 
-    /*
-     * =========================================================
-     * SIMPLE LIFECYCLE OWNER
-     * =========================================================
-     *
-     * فقط برای ComposeView.
-     *
-     * SavedStateRegistry عمداً وجود ندارد.
-     * =========================================================
-     */
+    // =========================================================
+    // SIMPLE LIFECYCLE OWNER
+    // =========================================================
 
     private class GameLifecycleOwner :
         LifecycleOwner {
@@ -1611,39 +1945,15 @@ object GameMenu {
 
         fun start() {
 
-            registry.handleLifecycleEvent(
-                Lifecycle.Event.ON_CREATE
-            )
-
-            registry.handleLifecycleEvent(
-                Lifecycle.Event.ON_START
-            )
-
-            registry.handleLifecycleEvent(
-                Lifecycle.Event.ON_RESUME
-            )
+            registry.currentState =
+                Lifecycle.State.RESUMED
         }
 
 
-        fun stop() {
+        fun destroy() {
 
-            if (
-                registry.currentState
-                != Lifecycle.State.DESTROYED
-            ) {
-
-                registry.handleLifecycleEvent(
-                    Lifecycle.Event.ON_PAUSE
-                )
-
-                registry.handleLifecycleEvent(
-                    Lifecycle.Event.ON_STOP
-                )
-
-                registry.handleLifecycleEvent(
-                    Lifecycle.Event.ON_DESTROY
-                )
-            }
+            registry.currentState =
+                Lifecycle.State.DESTROYED
         }
     }
 }
