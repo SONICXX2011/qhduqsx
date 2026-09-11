@@ -4,7 +4,6 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.View
 import android.view.ViewGroup
 
 import androidx.compose.foundation.background
@@ -32,8 +31,8 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +47,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.setViewTreeLifecycleOwner
+
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 
 
 object GameMenu {
@@ -57,54 +61,20 @@ object GameMenu {
     private val mainHandler =
         Handler(Looper.getMainLooper())
 
-
-    /*
-     * =========================================================
-     * Frida -> Kotlin state
-     *
-     * 0 = MAIN
-     * 1 = LAN
-     * 2 = COMMUNITY
-     * 3 = CHARACTER
-     * 4 = SETTINGS
-     * 5 = ABOUT
-     * =========================================================
-     */
+    @Volatile
+    private var currentGameMenu = -1
 
     @Volatile
-    private var currentGameMenu: Int = -1
-
-    @Volatile
-    private var networkActive: Boolean = false
-
-
-    /*
-     * =========================================================
-     * View state
-     * =========================================================
-     */
+    private var networkActive = false
 
     private var composeView: ComposeView? = null
-
     private var lifecycleOwner: GameLifecycleOwner? = null
 
-    private var ownerTagId: Int = 0
-
-
-    /*
-     * =========================================================
-     * Compose state
-     * =========================================================
-     */
-
     private var visible by mutableStateOf(false)
-
     private var currentPage by mutableStateOf(Page.MAIN)
-
     private var notificationText by mutableStateOf<String?>(null)
 
-    private var notificationToken: Long = 0L
-
+    private var notificationToken = 0L
 
     private enum class Page {
         MAIN,
@@ -113,13 +83,11 @@ object GameMenu {
         HELP
     }
 
-
     private enum class Accent {
         GREEN,
         GOLD,
         BLUE
     }
-
 
     // =========================================================
     // SHOW
@@ -129,14 +97,11 @@ object GameMenu {
     fun show(activity: Activity) {
 
         if (Looper.myLooper() != Looper.getMainLooper()) {
-
             mainHandler.post {
                 show(activity)
             }
-
             return
         }
-
 
         try {
 
@@ -144,149 +109,70 @@ object GameMenu {
                 activity.window?.decorView as? ViewGroup
 
             if (decorView == null) {
-
-                Log.e(
-                    TAG,
-                    "show(): DecorView is null"
-                )
-
+                Log.e(TAG, "show(): decorView == null")
                 return
             }
 
-
             /*
-             * =================================================
-             * Existing view
-             * =================================================
+             * Reuse existing view.
              */
+            val existing = composeView
 
-            val existingView =
-                composeView
+            if (existing != null) {
 
-            if (existingView != null) {
+                val owner = lifecycleOwner
 
-                ensureLifecycleOwner(
-                    activity,
-                    decorView
-                )
+                if (owner != null) {
+                    decorView.setViewTreeLifecycleOwner(owner)
+                    decorView.setViewTreeSavedStateRegistryOwner(owner)
 
-                if (existingView.parent == null) {
+                    existing.setViewTreeLifecycleOwner(owner)
+                    existing.setViewTreeSavedStateRegistryOwner(owner)
+                }
 
-                    decorView.addView(
-                        existingView
-                    )
+                if (existing.parent == null) {
+                    decorView.addView(existing)
                 }
 
                 updateVisibility()
 
-                Log.d(
-                    TAG,
-                    "show(): existing view reused"
-                )
-
+                Log.d(TAG, "show(): existing ComposeView reused")
                 return
             }
 
-
             /*
-             * =================================================
-             * Create lifecycle owner
-             * =================================================
+             * Create one owner implementing BOTH:
              *
-             * No SavedStateRegistry.
-             *
-             * No Recreator.
-             *
-             * No saved-state restoration.
-             *
-             * This is intentional because Unity's
-             * UnityPlayerActivity is a normal Activity.
+             * LifecycleOwner
+             * SavedStateRegistryOwner
              */
-
             val owner =
                 GameLifecycleOwner()
 
-            owner.start()
+            owner.attachAndRestore()
 
-            lifecycleOwner =
-                owner
-
+            lifecycleOwner = owner
 
             /*
-             * =================================================
-             * Find ViewTreeLifecycleOwner tag ID
-             * =================================================
+             * VERY IMPORTANT:
              *
-             * We don't call setViewTreeLifecycleOwner()
-             * because the project dependency/API combination
-             * previously failed to resolve that extension.
-             *
-             * Instead we use the actual ViewTree tag.
+             * Set both owners on DecorView BEFORE attaching
+             * ComposeView to the window.
              */
-
-            val tagId =
-                findLifecycleOwnerTagId(
-                    activity
-                )
-
-            if (tagId == 0) {
-
-                Log.e(
-                    TAG,
-                    "show(): view_tree_lifecycle_owner resource not found"
-                )
-
-                owner.destroy()
-
-                lifecycleOwner = null
-
-                return
-            }
-
-            ownerTagId = tagId
-
+            decorView.setViewTreeLifecycleOwner(owner)
+            decorView.setViewTreeSavedStateRegistryOwner(owner)
 
             /*
-             * IMPORTANT:
-             *
-             * The owner MUST be on the DecorView/tree parent,
-             * not only on ComposeView.
-             *
-             * Compose's WindowRecomposer searches from the
-             * attached view to the root.
+             * Create ComposeView.
              */
-
-            decorView.setTag(
-                tagId,
-                owner
-            )
-
-
-            /*
-             * =================================================
-             * Create ComposeView
-             * =================================================
-             */
-
             val view =
                 ComposeView(activity)
 
-            composeView =
-                view
-
-
             /*
-             * Also put the same owner on ComposeView.
-             *
-             * DecorView is the critical one, but this is harmless
-             * and makes the tree explicit.
+             * Also explicitly set both owners on ComposeView.
              */
-
-            view.setTag(
-                tagId,
-                owner
-            )
-
+            view.setViewTreeLifecycleOwner(owner)
+            view.setViewTreeSavedStateRegistryOwner(owner)
 
             view.layoutParams =
                 ViewGroup.LayoutParams(
@@ -294,172 +180,55 @@ object GameMenu {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
-
             /*
              * Start hidden.
-             *
-             * Frida later sends:
-             *
-             * setGameState(0, false)
              */
-
             view.visibility =
-                View.GONE
-
+                android.view.View.GONE
 
             /*
-             * =================================================
-             * Compose content
-             * =================================================
+             * Create composition.
              */
-
             view.setContent {
-
                 GameMenuRoot()
             }
 
-
             /*
-             * =================================================
-             * Attach to Unity window
-             * =================================================
+             * Save reference before attaching.
              */
-
-            decorView.addView(
+            composeView =
                 view
-            )
-
 
             /*
-             * Apply initial visibility.
+             * Attach only AFTER owners are installed.
              */
+            decorView.addView(view)
 
             updateVisibility()
 
-
             Log.d(
                 TAG,
-                "show(): ComposeView created and attached"
+                "show(): ComposeView created successfully"
             )
 
         } catch (t: Throwable) {
 
             Log.e(
                 TAG,
-                "show(): fatal error",
+                "show(): failed",
                 t
             )
 
-            composeView =
-                null
+            composeView = null
 
-            lifecycleOwner?.destroy()
-
-            lifecycleOwner =
-                null
-        }
-    }
-
-
-    // =========================================================
-    // FIND LIFECYCLE TAG
-    // =========================================================
-
-    private fun findLifecycleOwnerTagId(
-        activity: Activity
-    ): Int {
-
-        /*
-         * First try the application's merged resources.
-         */
-        var id =
-            activity.resources.getIdentifier(
-                "view_tree_lifecycle_owner",
-                "id",
-                activity.packageName
-            )
-
-
-        /*
-         * Fallback.
-         *
-         * Usually the merged application package is enough,
-         * but keep this fallback for different packaging layouts.
-         */
-        if (id == 0) {
-
-            id =
-                activity.resources.getIdentifier(
-                    "view_tree_lifecycle_owner",
-                    "id",
-                    "androidx.lifecycle"
-                )
-        }
-
-
-        return id
-    }
-
-
-    // =========================================================
-    // ENSURE OWNER
-    // =========================================================
-
-    private fun ensureLifecycleOwner(
-        activity: Activity,
-        decorView: ViewGroup
-    ) {
-
-        try {
-
-            var owner =
-                lifecycleOwner
-
-
-            if (owner == null) {
-
-                owner =
-                    GameLifecycleOwner()
-
-                owner.start()
-
-                lifecycleOwner =
-                    owner
+            try {
+                lifecycleOwner?.destroy()
+            } catch (_: Throwable) {
             }
 
-
-            if (ownerTagId == 0) {
-
-                ownerTagId =
-                    findLifecycleOwnerTagId(
-                        activity
-                    )
-            }
-
-
-            if (ownerTagId != 0) {
-
-                decorView.setTag(
-                    ownerTagId,
-                    owner
-                )
-
-                composeView?.setTag(
-                    ownerTagId,
-                    owner
-                )
-            }
-
-        } catch (t: Throwable) {
-
-            Log.e(
-                TAG,
-                "ensureLifecycleOwner() failed",
-                t
-            )
+            lifecycleOwner = null
         }
     }
-
 
     // =========================================================
     // HIDE
@@ -469,42 +238,30 @@ object GameMenu {
     fun hide() {
 
         if (Looper.myLooper() != Looper.getMainLooper()) {
-
             mainHandler.post {
                 hide()
             }
-
             return
         }
 
-
         try {
+            visible = false
+            composeView?.visibility = android.view.View.GONE
 
-            visible =
-                false
-
-            composeView?.visibility =
-                View.GONE
-
-
-            Log.d(
-                TAG,
-                "hide()"
-            )
+            Log.d(TAG, "hide()")
 
         } catch (t: Throwable) {
 
             Log.e(
                 TAG,
-                "hide() failed",
+                "hide(): failed",
                 t
             )
         }
     }
 
-
     // =========================================================
-    // SET GAME STATE
+    // GAME STATE
     // =========================================================
 
     @JvmStatic
@@ -516,7 +273,6 @@ object GameMenu {
         if (Looper.myLooper() != Looper.getMainLooper()) {
 
             mainHandler.post {
-
                 setGameState(
                     menu,
                     active
@@ -526,7 +282,6 @@ object GameMenu {
             return
         }
 
-
         try {
 
             currentGameMenu =
@@ -535,59 +290,47 @@ object GameMenu {
             networkActive =
                 active
 
-
             when {
 
                 /*
                  * Network active:
-                 * custom UI hidden.
+                 * hide custom UI.
                  */
                 active -> {
-
-                    visible =
-                        false
+                    visible = false
                 }
 
-
                 /*
-                 * Main menu.
+                 * MAIN
                  */
                 menu == 0 -> {
 
                     currentPage =
                         Page.MAIN
 
-                    visible =
-                        true
+                    visible = true
                 }
 
-
                 /*
-                 * Character.
+                 * CHARACTER
                  */
                 menu == 3 -> {
 
                     currentPage =
                         Page.CHARACTER
 
-                    visible =
-                        true
+                    visible = true
                 }
 
-
                 /*
-                 * LAN / COMMUNITY / SETTINGS / ABOUT.
+                 * LAN / COMMUNITY / SETTINGS / ABOUT
                  */
                 else -> {
-
-                    visible =
-                        false
+                    visible = false
                 }
             }
 
-
             updateVisibility()
-
 
             Log.d(
                 TAG,
@@ -598,12 +341,11 @@ object GameMenu {
 
             Log.e(
                 TAG,
-                "setGameState() failed",
+                "setGameState(): failed",
                 t
             )
         }
     }
-
 
     // =========================================================
     // START GAME
@@ -620,9 +362,8 @@ object GameMenu {
         showJoinNotification()
     }
 
-
     // =========================================================
-    // JOIN NOTIFICATION
+    // NOTIFICATION
     // =========================================================
 
     @JvmStatic
@@ -637,27 +378,19 @@ object GameMenu {
             return
         }
 
-
         notificationToken++
 
         val token =
             notificationToken
 
-
         notificationText =
             "درحال پیوستن به سرور..."
-
 
         mainHandler.postDelayed(
             {
 
-                if (
-                    notificationToken ==
-                    token
-                ) {
-
-                    notificationText =
-                        null
+                if (notificationToken == token) {
+                    notificationText = null
                 }
 
             },
@@ -665,9 +398,8 @@ object GameMenu {
         )
     }
 
-
     // =========================================================
-    // OPEN CHARACTER
+    // CHARACTER BRIDGE
     // =========================================================
 
     @JvmStatic
@@ -682,20 +414,14 @@ object GameMenu {
             return
         }
 
-
         currentPage =
             Page.CHARACTER
 
-
         if (!networkActive) {
-
-            visible =
-                true
+            visible = true
         }
 
-
         updateVisibility()
-
 
         Log.d(
             TAG,
@@ -703,59 +429,10 @@ object GameMenu {
         )
     }
 
-
     @JvmStatic
     fun openCharacter() {
-
         openCharacterFromBridge()
     }
-
-
-    // =========================================================
-    // ATTACH
-    // =========================================================
-
-    private fun attachToActivity(
-        activity: Activity,
-        view: ComposeView
-    ) {
-
-        try {
-
-            val decorView =
-                activity.window?.decorView
-                    as? ViewGroup
-
-
-            if (decorView == null) {
-
-                Log.e(
-                    TAG,
-                    "attachToActivity(): DecorView is null"
-                )
-
-                return
-            }
-
-
-            if (view.parent == null) {
-
-                decorView.addView(
-                    view
-                )
-            }
-
-
-        } catch (t: Throwable) {
-
-            Log.e(
-                TAG,
-                "attachToActivity() failed",
-                t
-            )
-        }
-    }
-
 
     // =========================================================
     // UPDATE VISIBILITY
@@ -764,27 +441,20 @@ object GameMenu {
     private fun updateVisibility() {
 
         val view =
-            composeView
-                ?: return
-
+            composeView ?: return
 
         val shouldShow =
-            visible &&
-                !networkActive
-
+            visible && !networkActive
 
         view.visibility =
             if (shouldShow) {
-                View.VISIBLE
+                android.view.View.VISIBLE
             } else {
-                View.GONE
+                android.view.View.GONE
             }
 
-
-        view.alpha =
-            1f
+        view.alpha = 1f
     }
-
 
     // =========================================================
     // ROOT
@@ -798,7 +468,6 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-
             if (
                 visible &&
                 !networkActive
@@ -806,41 +475,31 @@ object GameMenu {
 
                 when (currentPage) {
 
-                    Page.MAIN -> {
+                    Page.MAIN ->
                         MainPage()
-                    }
 
-                    Page.CHARACTER -> {
+                    Page.CHARACTER ->
                         CharacterPage()
-                    }
 
-                    Page.LOGIN -> {
+                    Page.LOGIN ->
                         LoginPage()
-                    }
 
-                    Page.HELP -> {
+                    Page.HELP ->
                         HelpPage()
-                    }
                 }
             }
 
-
-            val message =
-                notificationText
-
-
-            if (message != null) {
+            notificationText?.let { text ->
 
                 JoinNotification(
-                    text = message
+                    text = text
                 )
             }
         }
     }
 
-
     // =========================================================
-    // MAIN PAGE
+    // MAIN
     // =========================================================
 
     @Composable
@@ -872,7 +531,6 @@ object GameMenu {
                     Alignment.CenterVertically
             ) {
 
-
                 GlassButton(
                     modifier =
                         Modifier.width(118.dp),
@@ -884,18 +542,15 @@ object GameMenu {
                         Accent.GOLD,
 
                     onClick = {
-
                         currentPage =
                             Page.CHARACTER
                     }
                 )
 
-
                 Spacer(
                     modifier =
                         Modifier.width(12.dp)
                 )
-
 
                 GlassButton(
                     modifier =
@@ -908,17 +563,14 @@ object GameMenu {
                         Accent.GREEN,
 
                     onClick = {
-
                         onStartGameClicked()
                     }
                 )
-
 
                 Spacer(
                     modifier =
                         Modifier.width(12.dp)
                 )
-
 
                 GlassButton(
                     modifier =
@@ -931,7 +583,6 @@ object GameMenu {
                         Accent.BLUE,
 
                     onClick = {
-
                         currentPage =
                             Page.HELP
                     }
@@ -940,9 +591,8 @@ object GameMenu {
         }
     }
 
-
     // =========================================================
-    // CHARACTER PAGE
+    // CHARACTER
     // =========================================================
 
     @Composable
@@ -953,18 +603,15 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-
             GlassHeader(
                 title =
                     "Character",
 
                 onBack = {
-
                     currentPage =
                         Page.MAIN
                 }
             )
-
 
             Surface(
                 modifier =
@@ -979,9 +626,7 @@ object GameMenu {
                         .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(
-                        24.dp
-                    ),
+                    RoundedCornerShape(24.dp),
 
                 color =
                     ComposeColor(
@@ -993,14 +638,11 @@ object GameMenu {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(
-                                24.dp
-                            ),
+                            .padding(24.dp),
 
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
-
 
                     Text(
                         text =
@@ -1016,21 +658,15 @@ object GameMenu {
                             ComposeColor.White
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                18.dp
-                            )
+                            Modifier.height(18.dp)
                     )
-
 
                     Box(
                         modifier =
                             Modifier
-                                .size(
-                                    120.dp
-                                )
+                                .size(120.dp)
                                 .background(
                                     brush =
                                         Brush.linearGradient(
@@ -1085,14 +721,10 @@ object GameMenu {
                         )
                     }
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                22.dp
-                            )
+                            Modifier.height(22.dp)
                     )
-
 
                     InfoRow(
                         title =
@@ -1102,14 +734,10 @@ object GameMenu {
                             "Null"
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                10.dp
-                            )
+                            Modifier.height(10.dp)
                     )
-
 
                     InfoRow(
                         title =
@@ -1119,14 +747,10 @@ object GameMenu {
                             "Null"
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                22.dp
-                            )
+                            Modifier.height(22.dp)
                     )
-
 
                     GlassButton(
                         modifier =
@@ -1139,7 +763,6 @@ object GameMenu {
                             Accent.GREEN,
 
                         onClick = {
-
                             currentPage =
                                 Page.LOGIN
                         }
@@ -1149,43 +772,35 @@ object GameMenu {
         }
     }
 
-
     // =========================================================
-    // LOGIN PAGE
+    // LOGIN
     // =========================================================
 
     @Composable
     private fun LoginPage() {
 
-        var password by
-            remember {
-                mutableStateOf("")
-            }
+        var password by remember {
+            mutableStateOf("")
+        }
 
-
-        var confirmPassword by
-            remember {
-                mutableStateOf("")
-            }
-
+        var confirmPassword by remember {
+            mutableStateOf("")
+        }
 
         Box(
             modifier =
                 Modifier.fillMaxSize()
         ) {
 
-
             GlassHeader(
                 title =
                     "Login / Register",
 
                 onBack = {
-
                     currentPage =
                         Page.CHARACTER
                 }
             )
-
 
             Surface(
                 modifier =
@@ -1200,9 +815,7 @@ object GameMenu {
                         .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(
-                        24.dp
-                    ),
+                    RoundedCornerShape(24.dp),
 
                 color =
                     ComposeColor(
@@ -1214,14 +827,11 @@ object GameMenu {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(
-                                22.dp
-                            ),
+                            .padding(22.dp),
 
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
-
 
                     Text(
                         text =
@@ -1237,14 +847,10 @@ object GameMenu {
                             ComposeColor.White
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                18.dp
-                            )
+                            Modifier.height(18.dp)
                     )
-
 
                     OutlinedTextField(
                         value =
@@ -1270,21 +876,18 @@ object GameMenu {
                             PasswordVisualTransformation()
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                12.dp
-                            )
+                            Modifier.height(12.dp)
                     )
-
 
                     OutlinedTextField(
                         value =
                             confirmPassword,
 
                         onValueChange = {
-                            confirmPassword = it
+                            confirmPassword =
+                                it
                         },
 
                         modifier =
@@ -1303,14 +906,10 @@ object GameMenu {
                             PasswordVisualTransformation()
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                18.dp
-                            )
+                            Modifier.height(18.dp)
                     )
-
 
                     InfoRow(
                         title =
@@ -1320,14 +919,10 @@ object GameMenu {
                             "Null"
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                8.dp
-                            )
+                            Modifier.height(8.dp)
                     )
-
 
                     InfoRow(
                         title =
@@ -1337,14 +932,10 @@ object GameMenu {
                             "Null"
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                18.dp
-                            )
+                            Modifier.height(18.dp)
                     )
-
 
                     GlassButton(
                         modifier =
@@ -1369,9 +960,8 @@ object GameMenu {
         }
     }
 
-
     // =========================================================
-    // HELP PAGE
+    // HELP
     // =========================================================
 
     @Composable
@@ -1382,18 +972,15 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-
             GlassHeader(
                 title =
                     "Help",
 
                 onBack = {
-
                     currentPage =
                         Page.MAIN
                 }
             )
-
 
             Surface(
                 modifier =
@@ -1408,9 +995,7 @@ object GameMenu {
                         .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(
-                        24.dp
-                    ),
+                    RoundedCornerShape(24.dp),
 
                 color =
                     ComposeColor(
@@ -1422,14 +1007,11 @@ object GameMenu {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(
-                                30.dp
-                            ),
+                            .padding(30.dp),
 
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
-
 
                     Text(
                         text =
@@ -1447,14 +1029,10 @@ object GameMenu {
                             )
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                12.dp
-                            )
+                            Modifier.height(12.dp)
                     )
-
 
                     Text(
                         text =
@@ -1470,14 +1048,10 @@ object GameMenu {
                             ComposeColor.White
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                10.dp
-                            )
+                            Modifier.height(10.dp)
                     )
-
 
                     Text(
                         text =
@@ -1492,14 +1066,10 @@ object GameMenu {
                             )
                     )
 
-
                     Spacer(
                         modifier =
-                            Modifier.height(
-                                22.dp
-                            )
+                            Modifier.height(22.dp)
                     )
-
 
                     GlassButton(
                         modifier =
@@ -1512,7 +1082,6 @@ object GameMenu {
                             Accent.GREEN,
 
                         onClick = {
-
                             currentPage =
                                 Page.MAIN
                         }
@@ -1521,7 +1090,6 @@ object GameMenu {
             }
         }
     }
-
 
     // =========================================================
     // HEADER
@@ -1544,7 +1112,6 @@ object GameMenu {
                     )
         ) {
 
-
             GlassSmallButton(
                 modifier =
                     Modifier.align(
@@ -1560,7 +1127,6 @@ object GameMenu {
                 onClick =
                     onBack
             )
-
 
             Text(
                 text =
@@ -1583,9 +1149,8 @@ object GameMenu {
         }
     }
 
-
     // =========================================================
-    // INFO ROW
+    // INFO
     // =========================================================
 
     @Composable
@@ -1602,6 +1167,7 @@ object GameMenu {
                         ComposeColor(
                             0x331C2923
                         ),
+
                         RoundedCornerShape(
                             14.dp
                         )
@@ -1618,7 +1184,6 @@ object GameMenu {
                 Alignment.CenterVertically
         ) {
 
-
             Text(
                 text =
                     title,
@@ -1631,7 +1196,6 @@ object GameMenu {
                         0xFF9BB0A7
                     )
             )
-
 
             Text(
                 text =
@@ -1649,9 +1213,8 @@ object GameMenu {
         }
     }
 
-
     // =========================================================
-    // GLASS BUTTON
+    // BUTTON
     // =========================================================
 
     @Composable
@@ -1680,7 +1243,6 @@ object GameMenu {
                         0xFF72B8FF
                     )
             }
-
 
         OutlinedButton(
             onClick =
@@ -1722,7 +1284,6 @@ object GameMenu {
                     )
         ) {
 
-
             Text(
                 text =
                     text,
@@ -1735,7 +1296,6 @@ object GameMenu {
             )
         }
     }
-
 
     // =========================================================
     // SMALL BUTTON
@@ -1767,7 +1327,6 @@ object GameMenu {
                         0xFF72B8FF
                     )
             }
-
 
         OutlinedButton(
             onClick =
@@ -1816,7 +1375,6 @@ object GameMenu {
                     )
         ) {
 
-
             Text(
                 text =
                     text,
@@ -1830,9 +1388,8 @@ object GameMenu {
         }
     }
 
-
     // =========================================================
-    // JOIN NOTIFICATION
+    // NOTIFICATION
     // =========================================================
 
     @Composable
@@ -1847,7 +1404,6 @@ object GameMenu {
             contentAlignment =
                 Alignment.BottomCenter
         ) {
-
 
             Surface(
                 modifier =
@@ -1871,7 +1427,6 @@ object GameMenu {
                     )
             ) {
 
-
                 Row(
                     modifier =
                         Modifier.padding(
@@ -1883,7 +1438,6 @@ object GameMenu {
                         Alignment.CenterVertically
                 ) {
 
-
                     Box(
                         modifier =
                             Modifier
@@ -1894,12 +1448,12 @@ object GameMenu {
                                     ComposeColor(
                                         0xFF58E59A
                                     ),
+
                                     RoundedCornerShape(
                                         50
                                     )
                                 )
                     )
-
 
                     Spacer(
                         modifier =
@@ -1907,7 +1461,6 @@ object GameMenu {
                                 12.dp
                             )
                     )
-
 
                     Text(
                         text =
@@ -1927,33 +1480,77 @@ object GameMenu {
         }
     }
 
-
     // =========================================================
-    // SIMPLE LIFECYCLE OWNER
+    // LIFECYCLE OWNER
     // =========================================================
 
     private class GameLifecycleOwner :
-        LifecycleOwner {
+        LifecycleOwner,
+        SavedStateRegistryOwner {
 
-        private val registry =
+        private val lifecycleRegistry =
             LifecycleRegistry(this)
 
+        private val savedStateController =
+            SavedStateRegistryController.create(
+                this
+            )
 
         override val lifecycle: Lifecycle
-            get() = registry
+            get() =
+                lifecycleRegistry
 
+        override val savedStateRegistry =
+            savedStateController.savedStateRegistry
 
-        fun start() {
+        /*
+         * Correct order:
+         *
+         * 1. performAttach()
+         * 2. performRestore()
+         * 3. ON_CREATE
+         * 4. ON_START
+         * 5. ON_RESUME
+         */
+        fun attachAndRestore() {
 
-            registry.currentState =
-                Lifecycle.State.RESUMED
+            savedStateController.performAttach()
+
+            savedStateController.performRestore(
+                null
+            )
+
+            lifecycleRegistry.handleLifecycleEvent(
+                Lifecycle.Event.ON_CREATE
+            )
+
+            lifecycleRegistry.handleLifecycleEvent(
+                Lifecycle.Event.ON_START
+            )
+
+            lifecycleRegistry.handleLifecycleEvent(
+                Lifecycle.Event.ON_RESUME
+            )
         }
-
 
         fun destroy() {
 
-            registry.currentState =
-                Lifecycle.State.DESTROYED
+            try {
+
+                lifecycleRegistry.handleLifecycleEvent(
+                    Lifecycle.Event.ON_PAUSE
+                )
+
+                lifecycleRegistry.handleLifecycleEvent(
+                    Lifecycle.Event.ON_STOP
+                )
+
+                lifecycleRegistry.handleLifecycleEvent(
+                    Lifecycle.Event.ON_DESTROY
+                )
+
+            } catch (_: Throwable) {
+            }
         }
     }
 }
