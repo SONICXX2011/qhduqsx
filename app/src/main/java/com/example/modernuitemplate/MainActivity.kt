@@ -2,23 +2,46 @@ package com.example.modernuitemplate
 
 import android.os.Bundle
 import android.widget.FrameLayout
+
 import androidx.activity.ComponentActivity
-import com.example.gameui.GameMenu
+
+import com.example.gameui.UnityGameUIBridge
 
 class MainActivity : ComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
 
+        super.onCreate(
+            savedInstanceState
+        )
+
+        /*
+         * Activity فقط Host است.
+         *
+         * هیچ منطق Unity یا Network
+         * در این Activity وجود ندارد.
+         */
         setContentView(
             FrameLayout(this)
         )
 
-        GameMenu.show(this)
+        /*
+         * نمایش UI.
+         */
+        UnityGameUIBridge.show(
+            this
+        )
     }
 
     override fun onDestroy() {
-        GameMenu.hide()
+
+        /*
+         * Cleanup کامل UI.
+         */
+        UnityGameUIBridge.destroy()
+
         super.onDestroy()
     }
 }
