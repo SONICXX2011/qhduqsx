@@ -82,13 +82,74 @@ object UnityGameUIBridge {
     }
 
     /*
-     * فقط signal برای Frida.
-     *
-     * هیچ NetworkManager یا StartClient
-     * داخل Kotlin وجود ندارد.
+     * Frida intercepts this.
      */
     @JvmStatic
     fun startGame() {
+    }
+
+    /*
+     * Frida intercepts this.
+     */
+    @JvmStatic
+    fun openCharacter() {
+    }
+
+    /*
+     * Frida can call these directly if needed.
+     */
+    @JvmStatic
+    fun onCharacterEvent() {
+
+        if (
+            Looper.myLooper() ==
+            Looper.getMainLooper()
+        ) {
+
+            GameMenu.onCharacterEvent()
+
+        } else {
+
+            mainHandler.post {
+                GameMenu.onCharacterEvent()
+            }
+        }
+    }
+
+    @JvmStatic
+    fun onBackMenuEvent() {
+
+        if (
+            Looper.myLooper() ==
+            Looper.getMainLooper()
+        ) {
+
+            GameMenu.onBackMenuEvent()
+
+        } else {
+
+            mainHandler.post {
+                GameMenu.onBackMenuEvent()
+            }
+        }
+    }
+
+    @JvmStatic
+    fun onExitEvent() {
+
+        if (
+            Looper.myLooper() ==
+            Looper.getMainLooper()
+        ) {
+
+            GameMenu.onExitEvent()
+
+        } else {
+
+            mainHandler.post {
+                GameMenu.onExitEvent()
+            }
+        }
     }
 
     @JvmStatic
@@ -109,13 +170,21 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * فقط signal برای Frida.
-     *
-     * خود Unity Character توسط Frida
-     * مدیریت می‌شود.
-     */
     @JvmStatic
-    fun openCharacter() {
+    fun openCharacterFromBridge() {
+
+        if (
+            Looper.myLooper() ==
+            Looper.getMainLooper()
+        ) {
+
+            GameMenu.onCharacterEvent()
+
+        } else {
+
+            mainHandler.post {
+                GameMenu.onCharacterEvent()
+            }
+        }
     }
 }
