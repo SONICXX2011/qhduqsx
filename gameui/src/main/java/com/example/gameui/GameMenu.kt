@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.OutlinedButton
 import androidx.compose.material.OutlinedTextField
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -67,47 +68,28 @@ object GameMenu {
     @Volatile
     private var networkActive = false
 
-    /*
-     * Explicit UI mode.
-     *
-     * MAIN:
-     *   3 buttons
-     *
-     * CHARACTER:
-     *   4 texts + Login button only
-     *
-     * LOGIN:
-     *   login form
-     *
-     * HELP:
-     *   help
-     */
-    private var currentPage by
-        mutableStateOf(Page.MAIN)
-
-    /*
-     * Explicit Character lock.
-     *
-     * When true:
-     * state poller cannot immediately replace
-     * Character UI with Main UI.
-     */
-    private var characterLocked by
-        mutableStateOf(false)
-
-    private var exitWaiting by
-        mutableStateOf(false)
-
     private var visible by
         mutableStateOf(false)
 
-    private var composeView: ComposeView? = null
-    private var lifecycleOwner: GameLifecycleOwner? = null
+    private var currentPage by
+        mutableStateOf(Page.MAIN)
+
+    private var characterLocked by
+        mutableStateOf(false)
+
+    /*
+     * فقط Exit واقعی این را true می‌کند.
+     */
+    private var exitWaiting by
+        mutableStateOf(false)
 
     private var notificationText by
         mutableStateOf<String?>(null)
 
     private var notificationToken = 0L
+
+    private var composeView: ComposeView? = null
+    private var lifecycleOwner: GameLifecycleOwner? = null
 
     private enum class Page {
         MAIN,
@@ -148,6 +130,7 @@ object GameMenu {
             if (existing != null) {
 
                 lifecycleOwner?.let { owner ->
+
                     decorView
                         .setViewTreeLifecycleOwner(
                             owner
@@ -172,7 +155,9 @@ object GameMenu {
                 if (
                     existing.parent == null
                 ) {
-                    decorView.addView(existing)
+                    decorView.addView(
+                        existing
+                    )
                 }
 
                 updateVisibility()
@@ -216,8 +201,15 @@ object GameMenu {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
+            /*
+             * مهم:
+             * ComposeView خودش هیچ background ندارد.
+             */
             view.visibility =
                 View.GONE
+
+            view.alpha =
+                1f
 
             view.setContent {
                 GameMenuRoot()
@@ -260,19 +252,27 @@ object GameMenu {
             return
         }
 
-        visible = false
+        try {
 
-        composeView?.visibility =
-            View.GONE
+            visible =
+                false
+
+            composeView?.visibility =
+                View.GONE
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "hide failed",
+                t
+            )
+        }
     }
 
     /*
      * ========================================================
-     * REAL GAME STATE
-     * ========================================================
-     *
-     * Important:
-     * Character lock wins over normal MAIN polling.
+     * GAME STATE
      * ========================================================
      */
     @JvmStatic
@@ -294,90 +294,167 @@ object GameMenu {
             return
         }
 
-        currentGameMenu =
-            menu
+        try {
 
-        networkActive =
-            active
+            currentGameMenu =
+                menu
 
-        /*
-         * Network always hides custom UI.
-         */
-        if (active) {
+            networkActive =
+                active
 
-            visible = false
+            /*
+             * =================================================
+             * NETWORK
+             * =================================================
+             *
+             * Network همیشه اولویت اول است.
+             */
+            if (active) {
 
-            updateVisibility()
-            return
-        }
+                visible =
+                    false
 
-        /*
-         * Exit waiting has priority.
-         */
-        if (exitWaiting) {
+                updateVisibility()
 
-            visible = false
-
-            updateVisibility()
-            return
-        }
-
-        /*
-         * Character lock has priority.
-         *
-         * Poller seeing menu 0 for a moment
-         * must NOT destroy Character UI.
-         */
-        if (characterLocked) {
-
-            currentPage =
-                Page.CHARACTER
-
-            visible = true
-
-            updateVisibility()
-            return
-        }
-
-        /*
-         * Normal state.
-         */
-        when (menu) {
-
-            0 -> {
-
-                currentPage =
-                    Page.MAIN
-
-                visible = true
+                return
             }
 
-            3 -> {
+            /*
+             * =================================================
+             * EXIT RESTORE
+             * =================================================
+             *
+             * این همان اصلاح اصلی است.
+             *
+             * وقتی Frida واقعاً:
+             *
+             * menu = 0
+             * active = false
+             *
+             * فرستاد، خود Kotlin باید exitWaiting
+             * را آزاد کند.
+             */
+            if (exitWaiting) {
+
+                if (
+                    menu == 0 &&
+                    !active
+                ) {
+
+                    exitWaiting =
+                        false
+
+                    characterLocked =
+                        false
+
+                    currentPage =
+                        Page.MAIN
+
+                    visible =
+                        true
+
+                    updateVisibility()
+
+                    Log.d(
+                        TAG,
+                        "EXIT RESTORE ACCEPTED -> MAIN UI VISIBLE"
+                    )
+
+                } else {
+
+                    visible =
+                        false
+
+                    updateVisibility()
+                }
+
+                return
+            }
+
+            /*
+             * =================================================
+             * CHARACTER LOCK
+             * =================================================
+             *
+             * وقتی Character باز است، Poller حق ندارد
+             * Main را روی آن بیندازد.
+             */
+            if (characterLocked) {
 
                 currentPage =
                     Page.CHARACTER
 
+                visible =
+                    true
+
+                updateVisibility()
+
+                return
+            }
+
+            /*
+             * =================================================
+             * MAIN
+             * =================================================
+             */
+            if (menu == 0) {
+
+                currentPage =
+                    Page.MAIN
+
+                visible =
+                    true
+
+                updateVisibility()
+
+                return
+            }
+
+            /*
+             * =================================================
+             * CHARACTER
+             * =================================================
+             */
+            if (menu == 3) {
+
                 characterLocked =
                     true
 
-                visible = true
+                currentPage =
+                    Page.CHARACTER
+
+                visible =
+                    true
+
+                updateVisibility()
+
+                return
             }
 
-            else -> {
+            /*
+             * =================================================
+             * OTHER GAME STATES
+             * =================================================
+             */
+            visible =
+                false
 
-                visible = false
-            }
+            updateVisibility()
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "setGameState failed",
+                t
+            )
         }
-
-        updateVisibility()
     }
 
     /*
      * ========================================================
-     * CHARACTER EVENT FROM FRIDA
+     * CHARACTER EVENT
      * ========================================================
-     *
-     * This is now the explicit lock point.
      */
     @JvmStatic
     fun onCharacterEvent() {
@@ -392,32 +469,41 @@ object GameMenu {
             return
         }
 
-        characterLocked =
-            true
+        try {
 
-        exitWaiting =
-            false
+            exitWaiting =
+                false
 
-        currentPage =
-            Page.CHARACTER
+            characterLocked =
+                true
 
-        visible =
-            true
+            currentPage =
+                Page.CHARACTER
 
-        updateVisibility()
+            visible =
+                true
 
-        Log.d(
-            TAG,
-            "CHARACTER UI LOCKED"
-        )
+            updateVisibility()
+
+            Log.d(
+                TAG,
+                "CHARACTER UI LOCKED"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "onCharacterEvent failed",
+                t
+            )
+        }
     }
 
     /*
      * ========================================================
-     * BACK MENU EVENT FROM FRIDA
+     * BACK MENU EVENT
      * ========================================================
-     *
-     * Only this event releases Character lock.
      */
     @JvmStatic
     fun onBackMenuEvent() {
@@ -432,29 +518,43 @@ object GameMenu {
             return
         }
 
-        characterLocked =
-            false
+        try {
 
-        exitWaiting =
-            false
+            characterLocked =
+                false
 
-        currentPage =
-            Page.MAIN
+            exitWaiting =
+                false
 
-        visible =
-            !networkActive
+            currentPage =
+                Page.MAIN
 
-        updateVisibility()
+            /*
+             * فقط وقتی offline هستیم نمایش بده.
+             */
+            visible =
+                !networkActive
 
-        Log.d(
-            TAG,
-            "BACK MENU -> MAIN UI"
-        )
+            updateVisibility()
+
+            Log.d(
+                TAG,
+                "BACK MENU -> MAIN"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "onBackMenuEvent failed",
+                t
+            )
+        }
     }
 
     /*
      * ========================================================
-     * EXIT EVENT FROM FRIDA
+     * EXIT EVENT
      * ========================================================
      */
     @JvmStatic
@@ -470,21 +570,38 @@ object GameMenu {
             return
         }
 
-        characterLocked =
-            false
+        try {
 
-        exitWaiting =
-            true
+            characterLocked =
+                false
 
-        visible =
-            false
+            /*
+             * اینجا عمداً true می‌شود.
+             *
+             * فقط setGameState(0,false)
+             * اجازه آزاد کردنش را دارد.
+             */
+            exitWaiting =
+                true
 
-        updateVisibility()
+            visible =
+                false
 
-        Log.d(
-            TAG,
-            "EXIT -> UI HIDDEN / WAITING"
-        )
+            updateVisibility()
+
+            Log.d(
+                TAG,
+                "EXIT -> WAITING FOR REAL MAIN"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "onExitEvent failed",
+                t
+            )
+        }
     }
 
     /*
@@ -500,7 +617,7 @@ object GameMenu {
 
     /*
      * ========================================================
-     * CHARACTER CUSTOM BUTTON
+     * CHARACTER BUTTON
      * ========================================================
      */
     @JvmStatic
@@ -517,7 +634,7 @@ object GameMenu {
 
     /*
      * ========================================================
-     * JOIN NOTIFICATION
+     * NOTIFICATION
      * ========================================================
      */
     @JvmStatic
@@ -547,7 +664,9 @@ object GameMenu {
                 notificationToken ==
                 token
             ) {
-                notificationText = null
+
+                notificationText =
+                    null
             }
 
         }, 3000L)
@@ -564,23 +683,21 @@ object GameMenu {
             composeView
                 ?: return
 
-        val shouldShow =
-            visible &&
-            !networkActive
-
-        view.visibility =
-            if (shouldShow) {
-                View.VISIBLE
-            } else {
-                View.GONE
-            }
-
-        /*
-         * IMPORTANT:
-         * no alpha dimming.
-         */
         view.alpha =
             1f
+
+        view.visibility =
+            if (
+                visible &&
+                !networkActive
+            ) {
+
+                View.VISIBLE
+
+            } else {
+
+                View.GONE
+            }
     }
 
     /*
@@ -675,6 +792,7 @@ object GameMenu {
                         Accent.GOLD,
 
                     onClick = {
+
                         openCharacter()
                     }
                 )
@@ -699,6 +817,7 @@ object GameMenu {
                         Accent.GREEN,
 
                     onClick = {
+
                         onStartGameClicked()
                     }
                 )
@@ -723,6 +842,7 @@ object GameMenu {
                         Accent.BLUE,
 
                     onClick = {
+
                         currentPage =
                             Page.HELP
                     }
@@ -734,24 +854,16 @@ object GameMenu {
     /*
      * ========================================================
      * CHARACTER PAGE
-     * ========================================================
      *
-     * NO Surface.
-     * NO dark card.
-     * NO header.
-     * NO Character button.
-     * NO Start Game.
-     * NO Help.
-     * NO Back button.
+     * فقط:
      *
-     * ONLY:
      * Name
      * Role
      * Money
      * Iran Time
      * Login / Register
      *
-     * Background stays completely transparent.
+     * هیچ background/card ندارد.
      * ========================================================
      */
     @Composable
@@ -771,16 +883,19 @@ object GameMenu {
                         .padding(
                             horizontal = 28.dp
                         )
-                        .wrapContentHeight()
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
 
                 horizontalAlignment =
                     Alignment.CenterHorizontally
             ) {
 
                 SimpleInfoText(
-                    title = "Name",
-                    value = "Null"
+                    title =
+                        "Name",
+
+                    value =
+                        "Null"
                 )
 
                 Spacer(
@@ -791,8 +906,11 @@ object GameMenu {
                 )
 
                 SimpleInfoText(
-                    title = "Role",
-                    value = "Null"
+                    title =
+                        "Role",
+
+                    value =
+                        "Null"
                 )
 
                 Spacer(
@@ -803,8 +921,11 @@ object GameMenu {
                 )
 
                 SimpleInfoText(
-                    title = "Money",
-                    value = "Null"
+                    title =
+                        "Money",
+
+                    value =
+                        "Null"
                 )
 
                 Spacer(
@@ -815,8 +936,11 @@ object GameMenu {
                 )
 
                 SimpleInfoText(
-                    title = "Iran Time",
-                    value = getIranTime()
+                    title =
+                        "Iran Time",
+
+                    value =
+                        getIranTime()
                 )
 
                 Spacer(
@@ -826,9 +950,6 @@ object GameMenu {
                         )
                 )
 
-                /*
-                 * ONLY BUTTON ON CHARACTER PAGE.
-                 */
                 GlassButton(
                     modifier =
                         Modifier.width(
@@ -853,7 +974,7 @@ object GameMenu {
 
     /*
      * ========================================================
-     * SIMPLE TEXT
+     * SIMPLE CHARACTER TEXT
      * ========================================================
      */
     @Composable
@@ -866,7 +987,6 @@ object GameMenu {
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .wrapContentHeight()
                     .padding(
                         vertical = 2.dp
                     ),
@@ -888,10 +1008,7 @@ object GameMenu {
                 color =
                     ComposeColor(
                         0xFFD1D9D5
-                    ),
-
-                fontWeight =
-                    FontWeight.Medium
+                    )
             )
 
             Text(
@@ -901,18 +1018,18 @@ object GameMenu {
                 fontSize =
                     15.sp,
 
-                color =
-                    ComposeColor.White,
-
                 fontWeight =
-                    FontWeight.Bold
+                    FontWeight.Bold,
+
+                color =
+                    ComposeColor.White
             )
         }
     }
 
     /*
      * ========================================================
-     * LOGIN
+     * LOGIN PAGE
      * ========================================================
      */
     @Composable
@@ -1168,7 +1285,7 @@ object GameMenu {
 
     /*
      * ========================================================
-     * BUTTON
+     * GLASS BUTTON
      * ========================================================
      */
     @Composable
@@ -1214,10 +1331,12 @@ object GameMenu {
 
             border =
                 androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    accentColor.copy(
-                        alpha = 0.70f
-                    )
+                    width = 1.dp,
+
+                    color =
+                        accentColor.copy(
+                            alpha = 0.70f
+                        )
                 ),
 
             colors =
@@ -1227,6 +1346,7 @@ object GameMenu {
                             ComposeColor(
                                 0x33111A16
                             ),
+
                         contentColor =
                             ComposeColor.White
                     )
@@ -1294,6 +1414,7 @@ object GameMenu {
             border =
                 androidx.compose.foundation.BorderStroke(
                     1.dp,
+
                     accentColor.copy(
                         alpha = 0.70f
                     )
@@ -1312,6 +1433,7 @@ object GameMenu {
                             ComposeColor(
                                 0x33111A16
                             ),
+
                         contentColor =
                             ComposeColor.White
                     )
@@ -1376,7 +1498,8 @@ object GameMenu {
      * IRAN TIME
      * ========================================================
      */
-    private fun getIranTime(): String {
+    private fun getIranTime():
+        String {
 
         return try {
 
@@ -1403,7 +1526,7 @@ object GameMenu {
 
     /*
      * ========================================================
-     * LIFECYCLE
+     * LIFECYCLE OWNER
      * ========================================================
      */
     private class GameLifecycleOwner :
@@ -1417,8 +1540,10 @@ object GameMenu {
             SavedStateRegistryController
                 .create(this)
 
-        override val lifecycle: Lifecycle
-            get() = lifecycleRegistry
+        override val lifecycle:
+            Lifecycle
+            get() =
+                lifecycleRegistry
 
         override val savedStateRegistry =
             savedStateController
