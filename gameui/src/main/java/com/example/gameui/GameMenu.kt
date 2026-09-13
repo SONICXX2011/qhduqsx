@@ -19,23 +19,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
-
 import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.OutlinedButton
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
-
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -43,18 +40,23 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.ViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
 
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.SavedStateRegistryController
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 object GameMenu {
 
@@ -63,11 +65,32 @@ object GameMenu {
     private val mainHandler =
         Handler(Looper.getMainLooper())
 
-    @Volatile
-    private var currentGameMenu: Int = -1
+    // =========================================================
+    // UNITY / GAME STATE
+    // =========================================================
 
     @Volatile
-    private var networkActive: Boolean = false
+    private var currentGameMenu = -1
+
+    @Volatile
+    private var networkActive = false
+
+    // =========================================================
+    // CHARACTER DATA
+    // =========================================================
+
+    @Volatile
+    private var characterName = "Null"
+
+    @Volatile
+    private var characterRole = "Null"
+
+    @Volatile
+    private var characterMoney = "Null"
+
+    // =========================================================
+    // ANDROID UI
+    // =========================================================
 
     private var composeView: ComposeView? = null
 
@@ -79,7 +102,11 @@ object GameMenu {
 
     private var notificationText by mutableStateOf<String?>(null)
 
-    private var notificationToken: Long = 0L
+    private var notificationToken = 0L
+
+    // =========================================================
+    // PAGE
+    // =========================================================
 
     private enum class Page {
         MAIN,
@@ -87,6 +114,10 @@ object GameMenu {
         LOGIN,
         HELP
     }
+
+    // =========================================================
+    // ACCENT
+    // =========================================================
 
     private enum class Accent {
         GREEN,
@@ -101,10 +132,15 @@ object GameMenu {
     @JvmStatic
     fun show(activity: Activity) {
 
-        if (Looper.myLooper() != Looper.getMainLooper()) {
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
             mainHandler.post {
                 show(activity)
             }
+
             return
         }
 
@@ -114,44 +150,62 @@ object GameMenu {
                 activity.window?.decorView as? ViewGroup
 
             if (decorView == null) {
-                Log.e(TAG, "show(): decorView == null")
+
+                Log.e(
+                    TAG,
+                    "show(): decorView == null"
+                )
+
                 return
             }
 
-            val existingView =
+            /*
+             * اگر ComposeView قبلاً ساخته شده،
+             * همان View را دوباره استفاده می‌کنیم.
+             */
+            val existing =
                 composeView
 
-            if (existingView != null) {
+            if (existing != null) {
 
                 val owner =
                     lifecycleOwner
 
                 if (owner != null) {
 
-                    ViewTreeLifecycleOwner.set(
-                        decorView,
+                    decorView.setViewTreeLifecycleOwner(
                         owner
                     )
 
-                    ViewTreeSavedStateRegistryOwner.set(
-                        decorView,
+                    decorView.setViewTreeSavedStateRegistryOwner(
                         owner
                     )
 
-                    ViewTreeLifecycleOwner.set(
-                        existingView,
+                    existing.setViewTreeLifecycleOwner(
                         owner
                     )
 
-                    ViewTreeSavedStateRegistryOwner.set(
-                        existingView,
+                    existing.setViewTreeSavedStateRegistryOwner(
                         owner
                     )
                 }
 
-                if (existingView.parent == null) {
-                    decorView.addView(existingView)
+                if (existing.parent == null) {
+
+                    decorView.addView(
+                        existing
+                    )
                 }
+
+                /*
+                 * خیلی مهم:
+                 *
+                 * پس‌زمینه خود ComposeView کاملاً شفاف است.
+                 * هیچ تاریک‌سازی روی Game نمی‌شود.
+                 */
+                existing.setBackgroundColor(
+                    Color.TRANSPARENT
+                )
 
                 updateVisibility()
 
@@ -164,7 +218,10 @@ object GameMenu {
             }
 
             /*
-             * Lifecycle + SavedState owner
+             * Owner مشترک برای:
+             *
+             * LifecycleOwner
+             * SavedStateRegistryOwner
              */
             val owner =
                 GameLifecycleOwner()
@@ -175,52 +232,30 @@ object GameMenu {
                 owner
 
             /*
-             * IMPORTANT:
-             *
-             * Both owners are installed BEFORE
-             * ComposeView is attached.
+             * دقیقاً قبل از attach شدن ComposeView
+             * هر دو Owner نصب می‌شوند.
              */
-            ViewTreeLifecycleOwner.set(
-                decorView,
+            decorView.setViewTreeLifecycleOwner(
                 owner
             )
 
-            ViewTreeSavedStateRegistryOwner.set(
-                decorView,
+            decorView.setViewTreeSavedStateRegistryOwner(
                 owner
             )
 
             /*
-             * Create ComposeView.
+             * ComposeView
              */
             val view =
                 ComposeView(activity)
 
-            /*
-             * Explicitly install both owners on ComposeView.
-             */
-            ViewTreeLifecycleOwner.set(
-                view,
+            view.setViewTreeLifecycleOwner(
                 owner
             )
 
-            ViewTreeSavedStateRegistryOwner.set(
-                view,
+            view.setViewTreeSavedStateRegistryOwner(
                 owner
             )
-
-            /*
-             * Transparent background.
-             *
-             * This prevents the custom UI from adding
-             * a dark full-screen background.
-             */
-            view.setBackgroundColor(
-                Color.TRANSPARENT
-            )
-
-            view.alpha =
-                1f
 
             view.layoutParams =
                 ViewGroup.LayoutParams(
@@ -229,14 +264,22 @@ object GameMenu {
                 )
 
             /*
-             * Hidden until Frida says:
-             * setGameState(0, false)
+             * کاملاً Transparent.
+             *
+             * هیچ background تیره‌ای روی Unity نمی‌افتد.
+             */
+            view.setBackgroundColor(
+                Color.TRANSPARENT
+            )
+
+            /*
+             * ابتدا مخفی.
              */
             view.visibility =
                 View.GONE
 
             /*
-             * Compose content.
+             * Compose content
              */
             view.setContent {
                 GameMenuRoot()
@@ -246,7 +289,7 @@ object GameMenu {
                 view
 
             /*
-             * Attach after ViewTree owners exist.
+             * بعد از ثبت Ownerها attach می‌کنیم.
              */
             decorView.addView(
                 view
@@ -256,7 +299,7 @@ object GameMenu {
 
             Log.d(
                 TAG,
-                "show(): ComposeView created and attached"
+                "show(): ComposeView created successfully"
             )
 
         } catch (t: Throwable) {
@@ -267,16 +310,16 @@ object GameMenu {
                 t
             )
 
-            composeView =
-                null
+            composeView = null
 
             try {
+
                 lifecycleOwner?.destroy()
+
             } catch (_: Throwable) {
             }
 
-            lifecycleOwner =
-                null
+            lifecycleOwner = null
         }
     }
 
@@ -287,27 +330,122 @@ object GameMenu {
     @JvmStatic
     fun hide() {
 
-        if (Looper.myLooper() != Looper.getMainLooper()) {
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
             mainHandler.post {
                 hide()
             }
+
             return
         }
 
-        visible =
-            false
+        try {
 
-        composeView?.visibility =
-            View.GONE
+            visible = false
 
-        Log.d(
-            TAG,
-            "hide()"
-        )
+            composeView?.visibility =
+                View.GONE
+
+            Log.d(
+                TAG,
+                "hide()"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "hide(): failed",
+                t
+            )
+        }
     }
 
     // =========================================================
-    // FRIDA STATE
+    // DESTROY
+    // =========================================================
+
+    @JvmStatic
+    fun destroy() {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
+            mainHandler.post {
+                destroy()
+            }
+
+            return
+        }
+
+        try {
+
+            visible = false
+
+            composeView?.visibility =
+                View.GONE
+
+            val view =
+                composeView
+
+            if (view != null) {
+
+                val parent =
+                    view.parent
+
+                if (parent is ViewGroup) {
+
+                    parent.removeView(
+                        view
+                    )
+                }
+            }
+
+            composeView = null
+
+            try {
+                lifecycleOwner?.destroy()
+            } catch (_: Throwable) {
+            }
+
+            lifecycleOwner = null
+
+            notificationText = null
+
+            currentPage =
+                Page.MAIN
+
+            characterName =
+                "Null"
+
+            characterRole =
+                "Null"
+
+            characterMoney =
+                "Null"
+
+            Log.d(
+                TAG,
+                "destroy()"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "destroy(): failed",
+                t
+            )
+        }
+    }
+
+    // =========================================================
+    // GAME STATE
     // =========================================================
 
     @JvmStatic
@@ -316,57 +454,223 @@ object GameMenu {
         active: Boolean
     ) {
 
-        if (Looper.myLooper() != Looper.getMainLooper()) {
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
             mainHandler.post {
+
                 setGameState(
                     menu,
                     active
                 )
             }
+
             return
         }
 
-        currentGameMenu =
-            menu
+        try {
 
-        networkActive =
-            active
+            currentGameMenu =
+                menu
 
-        when {
+            networkActive =
+                active
 
-            active -> {
-                visible =
-                    false
+            /*
+             * ==================================================
+             * NETWORK ACTIVE
+             * ==================================================
+             *
+             * وقتی بازی آنلاین شد،
+             * UI کامل مخفی می‌شود.
+             */
+            if (active) {
+
+                visible = false
+
+                updateVisibility()
+
+                Log.d(
+                    TAG,
+                    "STATE network active -> HIDE"
+                )
+
+                return
             }
 
-            menu == 0 -> {
+            /*
+             * ==================================================
+             * MAIN
+             * ==================================================
+             *
+             * 0 = MAIN
+             */
+            if (menu == 0) {
+
                 currentPage =
                     Page.MAIN
 
                 visible =
                     true
+
+                updateVisibility()
+
+                Log.d(
+                    TAG,
+                    "STATE MAIN -> SHOW"
+                )
+
+                return
             }
 
-            menu == 3 -> {
+            /*
+             * ==================================================
+             * CHARACTER
+             * ==================================================
+             *
+             * 3 = CHARACTER
+             *
+             * تا وقتی State روی 3 است:
+             * UI Character باقی می‌ماند.
+             *
+             * هیچ Timeout ندارد.
+             */
+            if (menu == 3) {
+
                 currentPage =
                     Page.CHARACTER
 
                 visible =
                     true
+
+                updateVisibility()
+
+                Log.d(
+                    TAG,
+                    "STATE CHARACTER -> SHOW"
+                )
+
+                return
             }
 
-            else -> {
-                visible =
-                    false
+            /*
+             * ==================================================
+             * OTHER MENUS
+             * ==================================================
+             *
+             * LAN
+             * COMMUNITY
+             * SETTINGS
+             * ABOUT
+             *
+             * UI سفارشی مخفی.
+             */
+            visible =
+                false
+
+            updateVisibility()
+
+            Log.d(
+                TAG,
+                "STATE menu=$menu -> HIDE"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "setGameState(): failed",
+                t
+            )
+        }
+    }
+
+    // =========================================================
+    // CHARACTER DATA
+    // =========================================================
+
+    @JvmStatic
+    fun setCharacterInfo(
+        name: String?,
+        role: String?,
+        money: String?
+    ) {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
+            mainHandler.post {
+
+                setCharacterInfo(
+                    name,
+                    role,
+                    money
+                )
             }
+
+            return
         }
 
-        updateVisibility()
+        characterName =
+            if (
+                name.isNullOrBlank()
+            ) {
+                "Null"
+            } else {
+                name
+            }
+
+        characterRole =
+            if (
+                role.isNullOrBlank()
+            ) {
+                "Null"
+            } else {
+                role
+            }
+
+        characterMoney =
+            if (
+                money.isNullOrBlank()
+            ) {
+                "Null"
+            } else {
+                money
+            }
 
         Log.d(
             TAG,
-            "STATE menu=$menu active=$active page=$currentPage visible=$visible"
+            "CHARACTER_INFO name=$characterName role=$characterRole money=$characterMoney"
         )
+    }
+
+    @JvmStatic
+    fun clearCharacterInfo() {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
+            mainHandler.post {
+                clearCharacterInfo()
+            }
+
+            return
+        }
+
+        characterName =
+            "Null"
+
+        characterRole =
+            "Null"
+
+        characterMoney =
+            "Null"
     }
 
     // =========================================================
@@ -385,16 +689,42 @@ object GameMenu {
     }
 
     // =========================================================
+    // LOGIN
+    // =========================================================
+
+    @JvmStatic
+    fun onLoginClicked() {
+
+        Log.d(
+            TAG,
+            "LOGIN_CLICKED"
+        )
+
+        /*
+         * فعلاً فقط Event ثبت می‌شود.
+         *
+         * منطق Login بعداً می‌تواند توسط Frida
+         * یا Bridge پردازش شود.
+         */
+        UnityGameUIBridge.requestLogin()
+    }
+
+    // =========================================================
     // NOTIFICATION
     // =========================================================
 
     @JvmStatic
     fun showJoinNotification() {
 
-        if (Looper.myLooper() != Looper.getMainLooper()) {
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
             mainHandler.post {
                 showJoinNotification()
             }
+
             return
         }
 
@@ -408,37 +738,74 @@ object GameMenu {
 
         mainHandler.postDelayed(
             {
-                if (notificationToken == token) {
-                    notificationText = null
+
+                if (
+                    notificationToken ==
+                    token
+                ) {
+
+                    notificationText =
+                        null
                 }
+
             },
             3000L
         )
     }
 
+    @JvmStatic
+    fun clearJoinNotification() {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
+            mainHandler.post {
+                clearJoinNotification()
+            }
+
+            return
+        }
+
+        notificationToken++
+
+        notificationText =
+            null
+    }
+
     // =========================================================
-    // CHARACTER
+    // CHARACTER BRIDGE
     // =========================================================
 
     @JvmStatic
     fun openCharacterFromBridge() {
 
-        if (Looper.myLooper() != Looper.getMainLooper()) {
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
             mainHandler.post {
                 openCharacterFromBridge()
             }
+
             return
         }
 
-        currentPage =
-            Page.CHARACTER
-
+        /*
+         * فقط در صورتی که Network فعال نباشد.
+         */
         if (!networkActive) {
+
+            currentPage =
+                Page.CHARACTER
+
             visible =
                 true
-        }
 
-        updateVisibility()
+            updateVisibility()
+        }
 
         Log.d(
             TAG,
@@ -452,6 +819,98 @@ object GameMenu {
     }
 
     // =========================================================
+    // HELP
+    // =========================================================
+
+    @JvmStatic
+    fun openHelp() {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
+            mainHandler.post {
+                openHelp()
+            }
+
+            return
+        }
+
+        if (networkActive) {
+            return
+        }
+
+        currentPage =
+            Page.HELP
+
+        visible =
+            true
+
+        updateVisibility()
+    }
+
+    @JvmStatic
+    fun closeHelp() {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
+            mainHandler.post {
+                closeHelp()
+            }
+
+            return
+        }
+
+        currentPage =
+            Page.MAIN
+
+        visible =
+            !networkActive
+
+        updateVisibility()
+    }
+
+    // =========================================================
+    // BACK FROM CHARACTER
+    // =========================================================
+
+    @JvmStatic
+    fun closeCharacterToMain() {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+
+            mainHandler.post {
+                closeCharacterToMain()
+            }
+
+            return
+        }
+
+        /*
+         * این فقط Navigation داخلی Kotlin است.
+         *
+         * BackMenu واقعی Unity باید State را به 0
+         * برگرداند تا setGameState() هم Main را نمایش دهد.
+         */
+        currentPage =
+            Page.MAIN
+
+        if (!networkActive) {
+            visible =
+                true
+        }
+
+        updateVisibility()
+    }
+
+    // =========================================================
     // VISIBILITY
     // =========================================================
 
@@ -459,11 +918,14 @@ object GameMenu {
 
         val view =
             composeView
-                ?: return
+
+        if (view == null) {
+            return
+        }
 
         val shouldShow =
             visible &&
-                !networkActive
+            !networkActive
 
         view.visibility =
             if (shouldShow) {
@@ -472,8 +934,17 @@ object GameMenu {
                 View.GONE
             }
 
+        /*
+         * Alpha همیشه 1.
+         *
+         * هیچ fade تاریک یا نیمه‌شفاف روی کل صفحه نداریم.
+         */
         view.alpha =
             1f
+
+        view.setBackgroundColor(
+            Color.TRANSPARENT
+        )
     }
 
     // =========================================================
@@ -485,7 +956,11 @@ object GameMenu {
 
         Box(
             modifier =
-                Modifier.fillMaxSize()
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        ComposeColor.Transparent
+                    )
         ) {
 
             if (
@@ -509,7 +984,8 @@ object GameMenu {
                 }
             }
 
-            notificationText?.let { text ->
+            notificationText?.let {
+                text ->
 
                 JoinNotification(
                     text = text
@@ -527,7 +1003,8 @@ object GameMenu {
 
         Box(
             modifier =
-                Modifier.fillMaxSize()
+                Modifier
+                    .fillMaxSize()
         ) {
 
             Row(
@@ -551,9 +1028,6 @@ object GameMenu {
                     Alignment.CenterVertically
             ) {
 
-                /*
-                 * Character
-                 */
                 GlassButton(
                     modifier =
                         Modifier.width(118.dp),
@@ -566,15 +1040,13 @@ object GameMenu {
 
                     onClick = {
 
-                        currentPage =
-                            Page.CHARACTER
-
                         /*
-                         * Signal Frida to press the
-                         * original Unity Character button.
+                         * UI را باز می‌کنیم.
+                         *
+                         * Unity state نیز از سمت Frida
+                         * به 3 تغییر خواهد کرد.
                          */
-                        UnityGameUIBridge
-                            .requestUnityCharacter()
+                        openCharacterFromBridge()
                     }
                 )
 
@@ -583,9 +1055,6 @@ object GameMenu {
                         Modifier.width(12.dp)
                 )
 
-                /*
-                 * Start Game
-                 */
                 GlassButton(
                     modifier =
                         Modifier.width(138.dp),
@@ -598,12 +1067,7 @@ object GameMenu {
 
                     onClick = {
 
-                        /*
-                         * Signal Frida.
-                         * Frida performs actual connection.
-                         */
-                        UnityGameUIBridge
-                            .requestStartGame()
+                        onStartGameClicked()
                     }
                 )
 
@@ -612,9 +1076,6 @@ object GameMenu {
                         Modifier.width(12.dp)
                 )
 
-                /*
-                 * Help
-                 */
                 GlassButton(
                     modifier =
                         Modifier.width(105.dp),
@@ -627,8 +1088,7 @@ object GameMenu {
 
                     onClick = {
 
-                        currentPage =
-                            Page.HELP
+                        openHelp()
                     }
                 )
             }
@@ -642,179 +1102,174 @@ object GameMenu {
     @Composable
     private fun CharacterPage() {
 
-        Box(
-            modifier =
-                Modifier.fillMaxSize()
+        /*
+         * ساعت ایران.
+         *
+         * این State هر ثانیه update می‌شود.
+         */
+        var iranTime by remember {
+            mutableStateOf(
+                getIranTime()
+            )
+        }
+
+        LaunchedEffect(
+            currentPage
         ) {
 
-            GlassHeader(
-                title =
-                    "Character",
+            while (
+                currentPage ==
+                Page.CHARACTER
+            ) {
 
-                onBack = {
-                    currentPage =
-                        Page.MAIN
-                }
-            )
+                iranTime =
+                    getIranTime()
 
-            Surface(
+                kotlinx.coroutines.delay(
+                    1000L
+                )
+            }
+        }
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+        ) {
+
+            /*
+             * هیچ عنوان Character،
+             * هیچ آیکون،
+             * هیچ عکس،
+             * هیچ C،
+             * هیچ پنل بزرگی وسط صفحه.
+             *
+             * فقط متن اطلاعات.
+             */
+
+            Column(
                 modifier =
                     Modifier
                         .align(
-                            Alignment.Center
+                            Alignment.BottomCenter
                         )
                         .padding(
-                            horizontal = 22.dp
+                            start = 22.dp,
+                            end = 22.dp,
+                            bottom = 38.dp
                         )
                         .fillMaxWidth()
                         .wrapContentHeight(),
 
-                shape =
-                    RoundedCornerShape(24.dp),
-
-                color =
-                    ComposeColor(
-                        0xCC101816
-                    )
+                horizontalAlignment =
+                    Alignment.CenterHorizontally
             ) {
 
-                Column(
+                CharacterInfoText(
+                    label =
+                        "Name",
+
+                    value =
+                        characterName
+                )
+
+                Spacer(
                     modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
+                        Modifier.height(6.dp)
+                )
 
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
-                ) {
+                CharacterInfoText(
+                    label =
+                        "Role",
 
-                    Text(
-                        text =
-                            "CHARACTER",
+                    value =
+                        characterRole
+                )
 
-                        fontSize =
-                            22.sp,
+                Spacer(
+                    modifier =
+                        Modifier.height(6.dp)
+                )
 
-                        fontWeight =
-                            FontWeight.Bold,
+                CharacterInfoText(
+                    label =
+                        "Money",
 
-                        color =
-                            ComposeColor.White
-                    )
+                    value =
+                        characterMoney
+                )
 
-                    Spacer(
-                        modifier =
-                            Modifier.height(18.dp)
-                    )
+                Spacer(
+                    modifier =
+                        Modifier.height(6.dp)
+                )
 
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(120.dp)
-                                .background(
-                                    brush =
-                                        Brush.linearGradient(
-                                            listOf(
-                                                ComposeColor(
-                                                    0xFF173529
-                                                ),
-                                                ComposeColor(
-                                                    0xFF0D1713
-                                                )
-                                            )
-                                        ),
+                CharacterInfoText(
+                    label =
+                        "Time",
 
-                                    shape =
-                                        RoundedCornerShape(
-                                            28.dp
-                                        )
-                                )
-                                .border(
-                                    width =
-                                        1.dp,
+                    value =
+                        iranTime
+                )
 
-                                    color =
-                                        ComposeColor(
-                                            0x5548E39A
-                                        ),
+                Spacer(
+                    modifier =
+                        Modifier.height(14.dp)
+                )
 
-                                    shape =
-                                        RoundedCornerShape(
-                                            28.dp
-                                        )
-                                ),
+                GlassButton(
+                    modifier =
+                        Modifier.width(160.dp),
 
-                        contentAlignment =
-                            Alignment.Center
-                    ) {
+                    text =
+                        "Login",
 
-                        Text(
-                            text =
-                                "C",
+                    accent =
+                        Accent.GREEN,
 
-                            fontSize =
-                                54.sp,
+                    onClick = {
 
-                            fontWeight =
-                                FontWeight.Black,
-
-                            color =
-                                ComposeColor(
-                                    0xFF62E6A4
-                                )
-                        )
+                        onLoginClicked()
                     }
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(22.dp)
-                    )
-
-                    InfoRow(
-                        title =
-                            "Role",
-
-                        value =
-                            "Null"
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(10.dp)
-                    )
-
-                    InfoRow(
-                        title =
-                            "Money",
-
-                        value =
-                            "Null"
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(22.dp)
-                    )
-
-                    GlassButton(
-                        modifier =
-                            Modifier.fillMaxWidth(),
-
-                        text =
-                            "Login / Register",
-
-                        accent =
-                            Accent.GREEN,
-
-                        onClick = {
-
-                            currentPage =
-                                Page.LOGIN
-                        }
-                    )
-                }
+                )
             }
         }
+    }
+
+    // =========================================================
+    // CHARACTER TEXT
+    // =========================================================
+
+    @Composable
+    private fun CharacterInfoText(
+        label: String,
+        value: String
+    ) {
+
+        Text(
+            text =
+                "$label: $value",
+
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 4.dp,
+                        vertical = 1.dp
+                    ),
+
+            color =
+                ComposeColor.White,
+
+            fontSize =
+                15.sp,
+
+            fontWeight =
+                FontWeight.Medium,
+
+            textAlign =
+                TextAlign.Center
+        )
     }
 
     // =========================================================
@@ -837,16 +1292,6 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-            GlassHeader(
-                title =
-                    "Login / Register",
-
-                onBack = {
-                    currentPage =
-                        Page.CHARACTER
-                }
-            )
-
             Surface(
                 modifier =
                     Modifier
@@ -860,11 +1305,18 @@ object GameMenu {
                         .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(24.dp),
+                    RoundedCornerShape(
+                        22.dp
+                    ),
 
+                /*
+                 * فقط خود پنل کمی زمینه دارد.
+                 *
+                 * کل صفحه شفاف است.
+                 */
                 color =
                     ComposeColor(
-                        0xCC101816
+                        0xE6141D18
                     )
             ) {
 
@@ -872,7 +1324,9 @@ object GameMenu {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(22.dp),
+                            .padding(
+                                22.dp
+                            ),
 
                     horizontalAlignment =
                         Alignment.CenterHorizontally
@@ -880,10 +1334,10 @@ object GameMenu {
 
                     Text(
                         text =
-                            "ACCOUNT",
+                            "Login",
 
                         fontSize =
-                            21.sp,
+                            20.sp,
 
                         fontWeight =
                             FontWeight.Bold,
@@ -902,12 +1356,12 @@ object GameMenu {
                             password,
 
                         onValueChange = {
-                            password =
-                                it
+                            password = it
                         },
 
                         modifier =
-                            Modifier.fillMaxWidth(),
+                            Modifier
+                                .fillMaxWidth(),
 
                         singleLine =
                             true,
@@ -937,7 +1391,8 @@ object GameMenu {
                         },
 
                         modifier =
-                            Modifier.fillMaxWidth(),
+                            Modifier
+                                .fillMaxWidth(),
 
                         singleLine =
                             true,
@@ -957,32 +1412,6 @@ object GameMenu {
                             Modifier.height(18.dp)
                     )
 
-                    InfoRow(
-                        title =
-                            "Role",
-
-                        value =
-                            "Null"
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(8.dp)
-                    )
-
-                    InfoRow(
-                        title =
-                            "Money",
-
-                        value =
-                            "Null"
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(18.dp)
-                    )
-
                     GlassButton(
                         modifier =
                             Modifier.fillMaxWidth(),
@@ -995,10 +1424,29 @@ object GameMenu {
 
                         onClick = {
 
-                            Log.d(
-                                TAG,
-                                "LOGIN_CONTINUE_CLICKED"
-                            )
+                            onLoginClicked()
+                        }
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(8.dp)
+                    )
+
+                    GlassSmallButton(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        text =
+                            "Back",
+
+                        accent =
+                            Accent.BLUE,
+
+                        onClick = {
+
+                            currentPage =
+                                Page.CHARACTER
                         }
                     )
                 }
@@ -1018,16 +1466,6 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-            GlassHeader(
-                title =
-                    "Help",
-
-                onBack = {
-                    currentPage =
-                        Page.MAIN
-                }
-            )
-
             Surface(
                 modifier =
                     Modifier
@@ -1035,17 +1473,19 @@ object GameMenu {
                             Alignment.Center
                         )
                         .padding(
-                            horizontal = 22.dp
+                            horizontal = 24.dp
                         )
                         .fillMaxWidth()
                         .wrapContentHeight(),
 
                 shape =
-                    RoundedCornerShape(24.dp),
+                    RoundedCornerShape(
+                        22.dp
+                    ),
 
                 color =
                     ComposeColor(
-                        0xCC101816
+                        0xEA131C18
                     )
             ) {
 
@@ -1053,85 +1493,124 @@ object GameMenu {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(30.dp),
-
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
+                            .padding(
+                                20.dp
+                            )
                 ) {
 
-                    Text(
-                        text =
-                            "?",
-
-                        fontSize =
-                            50.sp,
-
-                        fontWeight =
-                            FontWeight.Black,
-
-                        color =
-                            ComposeColor(
-                                0xFF62E6A4
-                            )
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(12.dp)
-                    )
-
-                    Text(
-                        text =
-                            "به زودی",
-
-                        fontSize =
-                            24.sp,
-
-                        fontWeight =
-                            FontWeight.Bold,
-
-                        color =
-                            ComposeColor.White
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(10.dp)
-                    )
-
-                    Text(
-                        text =
-                            "Help system will be available soon.",
-
-                        fontSize =
-                            14.sp,
-
-                        color =
-                            ComposeColor(
-                                0xFFB7C5BE
-                            )
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(22.dp)
-                    )
-
-                    GlassButton(
+                    /*
+                     * Header فقط برای Help.
+                     *
+                     * X اینجا واقعاً Help را می‌بندد.
+                     */
+                    Row(
                         modifier =
                             Modifier.fillMaxWidth(),
 
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Text(
+                            text =
+                                "Help",
+
+                            fontSize =
+                                19.sp,
+
+                            fontWeight =
+                                FontWeight.Bold,
+
+                            color =
+                                ComposeColor.White
+                        )
+
+                        GlassSmallButton(
+                            modifier =
+                                Modifier.width(
+                                    48.dp
+                                ),
+
+                            text =
+                                "X",
+
+                            accent =
+                                Accent.BLUE,
+
+                            onClick = {
+
+                                closeHelp()
+                            }
+                        )
+                    }
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(18.dp)
+                    )
+
+                    Text(
                         text =
-                            "Close",
+                            "Character برای نمایش اطلاعات کاراکتر بازی است.",
 
-                        accent =
-                            Accent.GREEN,
+                        modifier =
+                            Modifier.fillMaxWidth(),
 
-                        onClick = {
+                        fontSize =
+                            13.sp,
 
-                            currentPage =
-                                Page.MAIN
-                        }
+                        color =
+                            ComposeColor.White,
+
+                        textAlign =
+                            TextAlign.Center
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(8.dp)
+                    )
+
+                    Text(
+                        text =
+                            "Start Game برای شروع فرآیند اتصال است.",
+
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        fontSize =
+                            13.sp,
+
+                        color =
+                            ComposeColor.White,
+
+                        textAlign =
+                            TextAlign.Center
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(8.dp)
+                    )
+
+                    Text(
+                        text =
+                            "Login برای ورود به حساب کاربری است.",
+
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        fontSize =
+                            13.sp,
+
+                        color =
+                            ComposeColor.White,
+
+                        textAlign =
+                            TextAlign.Center
                     )
                 }
             }
@@ -1139,136 +1618,107 @@ object GameMenu {
     }
 
     // =========================================================
-    // HEADER
-    // =========================================================
-
-    @Composable
-    private fun GlassHeader(
-        title: String,
-        onBack: () -> Unit
-    ) {
-
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = 18.dp,
-                        end = 18.dp,
-                        top = 30.dp
-                    )
-        ) {
-
-            GlassSmallButton(
-                modifier =
-                    Modifier.align(
-                        Alignment.CenterStart
-                    ),
-
-                text =
-                    "<",
-
-                accent =
-                    Accent.GREEN,
-
-                onClick =
-                    onBack
-            )
-
-            Text(
-                text =
-                    title,
-
-                modifier =
-                    Modifier.align(
-                        Alignment.Center
-                    ),
-
-                fontSize =
-                    22.sp,
-
-                fontWeight =
-                    FontWeight.Bold,
-
-                color =
-                    ComposeColor.White
-            )
-        }
-    }
-
-    // =========================================================
-    // INFO ROW
-    // =========================================================
-
-    @Composable
-    private fun InfoRow(
-        title: String,
-        value: String
-    ) {
-
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(
-                        ComposeColor(
-                            0x331C2923
-                        ),
-
-                        RoundedCornerShape(
-                            14.dp
-                        )
-                    )
-                    .padding(
-                        horizontal = 16.dp,
-                        vertical = 12.dp
-                    ),
-
-            horizontalArrangement =
-                Arrangement.SpaceBetween,
-
-            verticalAlignment =
-                Alignment.CenterVertically
-        ) {
-
-            Text(
-                text =
-                    title,
-
-                fontSize =
-                    14.sp,
-
-                color =
-                    ComposeColor(
-                        0xFF9BB0A7
-                    )
-            )
-
-            Text(
-                text =
-                    value,
-
-                fontSize =
-                    15.sp,
-
-                fontWeight =
-                    FontWeight.Bold,
-
-                color =
-                    ComposeColor.White
-            )
-        }
-    }
-
-    // =========================================================
-    // GLASS BUTTON
+    // BUTTON
     // =========================================================
 
     @Composable
     private fun GlassButton(
-        modifier: Modifier = Modifier,
+        modifier: Modifier =
+            Modifier,
+
         text: String,
+
         accent: Accent,
+
+        onClick: () -> Unit
+    ) {
+
+        val accentColor =
+            when (accent) {
+
+                Accent.GREEN ->
+                    ComposeColor(
+                        0xFF58E59A
+                    )
+
+                Accent.GOLD ->
+                    ComposeColor(
+                        0xFFF0C85C
+                    )
+
+                Accent.BLUE ->
+                    ComposeColor(
+                        0xFF72B8FF
+                    )
+            }
+
+        OutlinedButton(
+            onClick =
+                onClick,
+
+            modifier =
+                modifier
+                    .height(
+                        52.dp
+                    ),
+
+            shape =
+                RoundedCornerShape(
+                    17.dp
+                ),
+
+            border =
+                androidx.compose.foundation
+                    .BorderStroke(
+                        width =
+                            1.dp,
+
+                        color =
+                            accentColor.copy(
+                                alpha =
+                                    0.70f
+                            )
+                    ),
+
+            colors =
+                ButtonDefaults
+                    .outlinedButtonColors(
+                        backgroundColor =
+                            ComposeColor(
+                                0xB3111714
+                            ),
+
+                        contentColor =
+                            ComposeColor.White
+                    )
+        ) {
+
+            Text(
+                text =
+                    text,
+
+                fontSize =
+                    14.sp,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+        }
+    }
+
+    // =========================================================
+    // SMALL BUTTON
+    // =========================================================
+
+    @Composable
+    private fun GlassSmallButton(
+        modifier: Modifier =
+            Modifier,
+
+        text: String,
+
+        accent: Accent,
+
         onClick: () -> Unit
     ) {
 
@@ -1297,12 +1747,12 @@ object GameMenu {
 
             modifier =
                 modifier.height(
-                    52.dp
+                    42.dp
                 ),
 
             shape =
                 RoundedCornerShape(
-                    17.dp
+                    13.dp
                 ),
 
             border =
@@ -1314,7 +1764,7 @@ object GameMenu {
                         color =
                             accentColor.copy(
                                 alpha =
-                                    0.65f
+                                    0.70f
                             )
                     ),
 
@@ -1323,7 +1773,7 @@ object GameMenu {
                     .outlinedButtonColors(
                         backgroundColor =
                             ComposeColor(
-                                0xAA111A16
+                                0xB3111714
                             ),
 
                         contentColor =
@@ -1336,7 +1786,7 @@ object GameMenu {
                     text,
 
                 fontSize =
-                    14.sp,
+                    13.sp,
 
                 fontWeight =
                     FontWeight.Bold
@@ -1345,98 +1795,7 @@ object GameMenu {
     }
 
     // =========================================================
-    // SMALL BUTTON
-    // =========================================================
-
-    @Composable
-    private fun GlassSmallButton(
-        modifier: Modifier = Modifier,
-        text: String,
-        accent: Accent,
-        onClick: () -> Unit
-    ) {
-
-        val accentColor =
-            when (accent) {
-
-                Accent.GREEN ->
-                    ComposeColor(
-                        0xFF58E59A
-                    )
-
-                Accent.GOLD ->
-                    ComposeColor(
-                        0xFFF0C85C
-                    )
-
-                Accent.BLUE ->
-                    ComposeColor(
-                        0xFF72B8FF
-                    )
-            }
-
-        OutlinedButton(
-            onClick =
-                onClick,
-
-            modifier =
-                modifier.size(
-                    48.dp
-                ),
-
-            shape =
-                RoundedCornerShape(
-                    15.dp
-                ),
-
-            border =
-                androidx.compose.foundation
-                    .BorderStroke(
-                        width =
-                            1.dp,
-
-                        color =
-                            accentColor.copy(
-                                alpha =
-                                    0.65f
-                            )
-                    ),
-
-            contentPadding =
-                androidx.compose.foundation
-                    .layout
-                    .PaddingValues(
-                        0.dp
-                    ),
-
-            colors =
-                ButtonDefaults
-                    .outlinedButtonColors(
-                        backgroundColor =
-                            ComposeColor(
-                                0xAA111A16
-                            ),
-
-                        contentColor =
-                            ComposeColor.White
-                    )
-        ) {
-
-            Text(
-                text =
-                    text,
-
-                fontSize =
-                    21.sp,
-
-                fontWeight =
-                    FontWeight.Bold
-            )
-        }
-    }
-
-    // =========================================================
-    // JOIN NOTIFICATION
+    // NOTIFICATION
     // =========================================================
 
     @Composable
@@ -1465,7 +1824,7 @@ object GameMenu {
 
                 shape =
                     RoundedCornerShape(
-                        18.dp
+                        17.dp
                     ),
 
                 color =
@@ -1474,61 +1833,65 @@ object GameMenu {
                     )
             ) {
 
-                Row(
+                Text(
+                    text =
+                        text,
+
                     modifier =
-                        Modifier.padding(
-                            horizontal = 18.dp,
-                            vertical = 15.dp
-                        ),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = 18.dp,
+                                vertical = 14.dp
+                            ),
 
-                    verticalAlignment =
-                        Alignment.CenterVertically
-                ) {
+                    fontSize =
+                        14.sp,
 
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(
-                                    10.dp
-                                )
-                                .background(
-                                    ComposeColor(
-                                        0xFF58E59A
-                                    ),
+                    fontWeight =
+                        FontWeight.Bold,
 
-                                    RoundedCornerShape(
-                                        50
-                                    )
-                                )
-                    )
+                    color =
+                        ComposeColor.White,
 
-                    Spacer(
-                        modifier =
-                            Modifier.width(
-                                12.dp
-                            )
-                    )
-
-                    Text(
-                        text =
-                            text,
-
-                        fontSize =
-                            14.sp,
-
-                        fontWeight =
-                            FontWeight.Bold,
-
-                        color =
-                            ComposeColor.White
-                    )
-                }
+                    textAlign =
+                        TextAlign.Center
+                )
             }
         }
     }
 
     // =========================================================
-    // LIFECYCLE + SAVED STATE
+    // IRAN TIME
+    // =========================================================
+
+    private fun getIranTime(): String {
+
+        return try {
+
+            val formatter =
+                SimpleDateFormat(
+                    "HH:mm:ss",
+                    Locale.US
+                )
+
+            formatter.timeZone =
+                TimeZone.getTimeZone(
+                    "Asia/Tehran"
+                )
+
+            formatter.format(
+                Date()
+            )
+
+        } catch (_: Throwable) {
+
+            "--:--:--"
+        }
+    }
+
+    // =========================================================
+    // LIFECYCLE / SAVED STATE
     // =========================================================
 
     private class GameLifecycleOwner :
@@ -1536,7 +1899,9 @@ object GameMenu {
         SavedStateRegistryOwner {
 
         private val lifecycleRegistry =
-            LifecycleRegistry(this)
+            LifecycleRegistry(
+                this
+            )
 
         private val savedStateController =
             SavedStateRegistryController.create(
@@ -1553,13 +1918,7 @@ object GameMenu {
         fun attachAndRestore() {
 
             /*
-             * Correct order:
-             *
-             * 1. Attach
-             * 2. Restore
-             * 3. CREATE
-             * 4. START
-             * 5. RESUME
+             * ترتیب صحیح همان نسخه سالم پروژه.
              */
             savedStateController.performAttach()
 
