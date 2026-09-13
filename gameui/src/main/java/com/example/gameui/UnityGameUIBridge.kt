@@ -28,7 +28,6 @@ object UnityGameUIBridge {
         } else {
 
             mainHandler.post {
-
                 GameMenu.show(
                     activity
                 )
@@ -83,25 +82,13 @@ object UnityGameUIBridge {
     }
 
     /*
-     * فقط signal.
+     * فقط signal برای Frida.
      *
-     * Frida این متد را می‌گیرد
-     * و اتصال واقعی را انجام می‌دهد.
+     * هیچ NetworkManager یا StartClient
+     * داخل Kotlin وجود ندارد.
      */
     @JvmStatic
     fun startGame() {
-
-        /*
-         * اینجا هیچ:
-         * IP
-         * Port
-         * NetworkManager
-         * StartClient
-         *
-         * وجود ندارد.
-         *
-         * عمداً خالی است تا Frida آن را بگیرد.
-         */
     }
 
     @JvmStatic
@@ -123,18 +110,12 @@ object UnityGameUIBridge {
     }
 
     /*
-     * فقط signal.
+     * فقط signal برای Frida.
      *
-     * Frida original Character button
-     * را اجرا می‌کند.
+     * خود Unity Character توسط Frida
+     * مدیریت می‌شود.
      */
     @JvmStatic
     fun openCharacter() {
-
-        /*
-         * عمدی خالی است.
-         *
-         * Frida این event را می‌گیرد.
-         */
     }
 }

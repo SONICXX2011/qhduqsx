@@ -74,7 +74,9 @@ object GameMenu {
 
     private var visible by mutableStateOf(false)
     private var currentPage by mutableStateOf(Page.MAIN)
-    private var notificationText by mutableStateOf<String?>(null)
+
+    private var notificationText by
+        mutableStateOf<String?>(null)
 
     private var notificationToken = 0L
 
@@ -110,7 +112,9 @@ object GameMenu {
                 activity.window?.decorView
                     as? ViewGroup
 
-            if (decorView == null) {
+            if (
+                decorView == null
+            ) {
                 Log.e(
                     TAG,
                     "show(): decorView == null"
@@ -121,12 +125,17 @@ object GameMenu {
             val existing =
                 composeView
 
-            if (existing != null) {
+            if (
+                existing != null
+            ) {
 
                 val owner =
                     lifecycleOwner
 
-                if (owner != null) {
+                if (
+                    owner != null
+                ) {
+
                     decorView
                         .setViewTreeLifecycleOwner(
                             owner
@@ -157,7 +166,6 @@ object GameMenu {
                 }
 
                 updateVisibility()
-
                 return
             }
 
@@ -258,11 +266,6 @@ object GameMenu {
             composeView?.visibility =
                 View.GONE
 
-            Log.d(
-                TAG,
-                "hide()"
-            )
-
         } catch (t: Throwable) {
 
             Log.e(
@@ -303,6 +306,12 @@ object GameMenu {
             networkActive =
                 active
 
+            /*
+             * =================================================
+             * NETWORK / IN-GAME
+             * =================================================
+             */
+
             if (active) {
 
                 visible = false
@@ -311,16 +320,14 @@ object GameMenu {
 
                 when (menu) {
 
+                    /*
+                     * =========================================
+                     * MAIN
+                     * =========================================
+                     */
+
                     0 -> {
-                        /*
-                         * MAIN:
-                         * only return from another real
-                         * Unity state to MAIN should force
-                         * the custom page to MAIN.
-                         *
-                         * Help page must not be destroyed
-                         * every poll.
-                         */
+
                         if (
                             previousMenu != 0 &&
                             previousMenu != -1
@@ -332,17 +339,38 @@ object GameMenu {
                         visible = true
                     }
 
+                    /*
+                     * =========================================
+                     * CHARACTER
+                     * =========================================
+                     */
+
                     3 -> {
+
                         /*
-                         * Actual game Character state.
+                         * Character screen contains ONLY:
+                         *
+                         * Name
+                         * Role
+                         * Money
+                         * Iran Time
+                         * Login / Register
                          */
+
                         currentPage =
                             Page.CHARACTER
 
                         visible = true
                     }
 
+                    /*
+                     * =========================================
+                     * EVERYTHING ELSE
+                     * =========================================
+                     */
+
                     else -> {
+
                         visible = false
                     }
                 }
@@ -368,15 +396,9 @@ object GameMenu {
     @JvmStatic
     fun onStartGameClicked() {
 
-        Log.d(
-            TAG,
-            "START_GAME_CLICKED"
-        )
-
         /*
-         * Kotlin does NOT perform network work.
-         *
-         * Only signal Frida through the bridge.
+         * Kotlin only sends the signal.
+         * Frida performs the actual connection.
          */
         UnityGameUIBridge.startGame()
     }
@@ -418,10 +440,7 @@ object GameMenu {
     fun openCharacterFromBridge() {
 
         /*
-         * This method is intentionally only for UI state.
-         *
-         * Actual game's Character navigation is now done
-         * by Frida through the original Unity button.
+         * Only UI state.
          */
         if (
             Looper.myLooper() !=
@@ -441,15 +460,14 @@ object GameMenu {
         }
 
         updateVisibility()
-
-        Log.d(
-            TAG,
-            "OPEN_CHARACTER_FROM_BRIDGE"
-        )
     }
 
     @JvmStatic
     fun openCharacter() {
+
+        /*
+         * Only signal to Frida.
+         */
         UnityGameUIBridge.openCharacter()
     }
 
@@ -470,9 +488,14 @@ object GameMenu {
                 View.GONE
             }
 
-        view.alpha =
-            1f
+        view.alpha = 1f
     }
+
+    /*
+     * ========================================================
+     * ROOT
+     * ========================================================
+     */
 
     @Composable
     private fun GameMenuRoot() {
@@ -514,6 +537,12 @@ object GameMenu {
         }
     }
 
+    /*
+     * ========================================================
+     * MAIN
+     * ========================================================
+     */
+
     @Composable
     private fun MainPage() {
 
@@ -543,6 +572,10 @@ object GameMenu {
                     Alignment.CenterVertically
             ) {
 
+                /*
+                 * Character
+                 */
+
                 GlassButton(
                     modifier =
                         Modifier.width(
@@ -556,6 +589,12 @@ object GameMenu {
                         Accent.GOLD,
 
                     onClick = {
+
+                        /*
+                         * This sends signal to Frida,
+                         * which invokes original Unity
+                         * Character button.
+                         */
                         openCharacter()
                     }
                 )
@@ -566,6 +605,10 @@ object GameMenu {
                             12.dp
                         )
                 )
+
+                /*
+                 * Start Game
+                 */
 
                 GlassButton(
                     modifier =
@@ -580,6 +623,7 @@ object GameMenu {
                         Accent.GREEN,
 
                     onClick = {
+
                         onStartGameClicked()
                     }
                 )
@@ -590,6 +634,10 @@ object GameMenu {
                             12.dp
                         )
                 )
+
+                /*
+                 * Help
+                 */
 
                 GlassButton(
                     modifier =
@@ -604,6 +652,7 @@ object GameMenu {
                         Accent.BLUE,
 
                     onClick = {
+
                         currentPage =
                             Page.HELP
                     }
@@ -612,6 +661,24 @@ object GameMenu {
         }
     }
 
+    /*
+     * ========================================================
+     * CHARACTER
+     * ========================================================
+     *
+     * ABSOLUTELY ONLY:
+     *
+     * Name
+     * Role
+     * Money
+     * Iran Time
+     *
+     * Login / Register
+     *
+     * Nothing else.
+     * ========================================================
+     */
+
     @Composable
     private fun CharacterPage() {
 
@@ -619,16 +686,6 @@ object GameMenu {
             modifier =
                 Modifier.fillMaxSize()
         ) {
-
-            GlassHeader(
-                title =
-                    "Character",
-
-                onBack = {
-                    currentPage =
-                        Page.MAIN
-                }
-            )
 
             Surface(
                 modifier =
@@ -649,7 +706,7 @@ object GameMenu {
 
                 color =
                     ComposeColor(
-                        0xCC101816
+                        0xE6111815
                     )
             ) {
 
@@ -658,33 +715,17 @@ object GameMenu {
                         Modifier
                             .fillMaxWidth()
                             .padding(
-                                24.dp
+                                horizontal = 22.dp,
+                                vertical = 24.dp
                             ),
 
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
 
-                    Text(
-                        text =
-                            "CHARACTER",
-
-                        fontSize =
-                            22.sp,
-
-                        fontWeight =
-                            FontWeight.Bold,
-
-                        color =
-                            ComposeColor.White
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                20.dp
-                            )
-                    )
+                    /*
+                     * NAME
+                     */
 
                     InfoRow(
                         title =
@@ -701,6 +742,10 @@ object GameMenu {
                             )
                     )
 
+                    /*
+                     * ROLE
+                     */
+
                     InfoRow(
                         title =
                             "Role",
@@ -715,6 +760,10 @@ object GameMenu {
                                 10.dp
                             )
                     )
+
+                    /*
+                     * MONEY
+                     */
 
                     InfoRow(
                         title =
@@ -731,6 +780,10 @@ object GameMenu {
                             )
                     )
 
+                    /*
+                     * IRAN TIME
+                     */
+
                     InfoRow(
                         title =
                             "Iran Time",
@@ -742,9 +795,13 @@ object GameMenu {
                     Spacer(
                         modifier =
                             Modifier.height(
-                                22.dp
+                                20.dp
                             )
                     )
+
+                    /*
+                     * ONLY BUTTON ON CHARACTER PAGE
+                     */
 
                     GlassButton(
                         modifier =
@@ -757,6 +814,7 @@ object GameMenu {
                             Accent.GREEN,
 
                         onClick = {
+
                             currentPage =
                                 Page.LOGIN
                         }
@@ -765,6 +823,12 @@ object GameMenu {
             }
         }
     }
+
+    /*
+     * ========================================================
+     * LOGIN
+     * ========================================================
+     */
 
     @Composable
     private fun LoginPage() {
@@ -784,16 +848,6 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-            GlassHeader(
-                title =
-                    "Login / Register",
-
-                onBack = {
-                    currentPage =
-                        Page.CHARACTER
-                }
-            )
-
             Surface(
                 modifier =
                     Modifier
@@ -813,7 +867,7 @@ object GameMenu {
 
                 color =
                     ComposeColor(
-                        0xCC101816
+                        0xE6111815
                     )
             ) {
 
@@ -886,8 +940,7 @@ object GameMenu {
                             confirmPassword,
 
                         onValueChange = {
-                            confirmPassword =
-                                it
+                            confirmPassword = it
                         },
 
                         modifier =
@@ -954,6 +1007,7 @@ object GameMenu {
                             Accent.GREEN,
 
                         onClick = {
+
                             Log.d(
                                 TAG,
                                 "LOGIN_CONTINUE_CLICKED"
@@ -965,6 +1019,12 @@ object GameMenu {
         }
     }
 
+    /*
+     * ========================================================
+     * HELP
+     * ========================================================
+     */
+
     @Composable
     private fun HelpPage() {
 
@@ -973,19 +1033,10 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-            GlassHeader(
-                title =
-                    "Help",
-
-                onBack = {
-                    currentPage =
-                        Page.MAIN
-                }
-            )
-
             /*
-             * Real X button.
+             * X
              */
+
             GlassSmallButton(
                 modifier =
                     Modifier
@@ -1004,6 +1055,7 @@ object GameMenu {
                     Accent.BLUE,
 
                 onClick = {
+
                     currentPage =
                         Page.MAIN
                 }
@@ -1028,7 +1080,7 @@ object GameMenu {
 
                 color =
                     ComposeColor(
-                        0xCC101816
+                        0xE6111815
                     )
             ) {
 
@@ -1096,6 +1148,7 @@ object GameMenu {
                             Accent.GREEN,
 
                         onClick = {
+
                             currentPage =
                                 Page.MAIN
                         }
@@ -1105,59 +1158,11 @@ object GameMenu {
         }
     }
 
-    @Composable
-    private fun GlassHeader(
-        title: String,
-        onBack: () -> Unit
-    ) {
-
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = 18.dp,
-                        end = 18.dp,
-                        top = 30.dp
-                    )
-        ) {
-
-            GlassSmallButton(
-                modifier =
-                    Modifier.align(
-                        Alignment.CenterStart
-                    ),
-
-                text =
-                    "<",
-
-                accent =
-                    Accent.GREEN,
-
-                onClick =
-                    onBack
-            )
-
-            Text(
-                text =
-                    title,
-
-                modifier =
-                    Modifier.align(
-                        Alignment.Center
-                    ),
-
-                fontSize =
-                    22.sp,
-
-                fontWeight =
-                    FontWeight.Bold,
-
-                color =
-                    ComposeColor.White
-            )
-        }
-    }
+    /*
+     * ========================================================
+     * INFO ROW
+     * ========================================================
+     */
 
     @Composable
     private fun InfoRow(
@@ -1217,6 +1222,12 @@ object GameMenu {
             )
         }
     }
+
+    /*
+     * ========================================================
+     * BUTTON
+     * ========================================================
+     */
 
     @Composable
     private fun GlassButton(
@@ -1292,6 +1303,12 @@ object GameMenu {
             )
         }
     }
+
+    /*
+     * ========================================================
+     * SMALL BUTTON
+     * ========================================================
+     */
 
     @Composable
     private fun GlassSmallButton(
@@ -1373,6 +1390,12 @@ object GameMenu {
             )
         }
     }
+
+    /*
+     * ========================================================
+     * JOIN NOTIFICATION
+     * ========================================================
+     */
 
     @Composable
     private fun JoinNotification(
@@ -1459,6 +1482,12 @@ object GameMenu {
         }
     }
 
+    /*
+     * ========================================================
+     * IRAN TIME
+     * ========================================================
+     */
+
     private fun getIranTime(): String {
 
         return try {
@@ -1484,6 +1513,12 @@ object GameMenu {
         }
     }
 
+    /*
+     * ========================================================
+     * LIFECYCLE OWNER
+     * ========================================================
+     */
+
     private class GameLifecycleOwner :
         LifecycleOwner,
         SavedStateRegistryOwner {
@@ -1499,7 +1534,8 @@ object GameMenu {
             get() = lifecycleRegistry
 
         override val savedStateRegistry =
-            savedStateController.savedStateRegistry
+            savedStateController
+                .savedStateRegistry
 
         fun attachAndRestore() {
 
