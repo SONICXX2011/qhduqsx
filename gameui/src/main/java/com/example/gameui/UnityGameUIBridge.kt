@@ -4,21 +4,12 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 
-import java.util.concurrent.atomic.AtomicLong
-
 object UnityGameUIBridge {
 
     private val mainHandler =
         Handler(
             Looper.getMainLooper()
         )
-
-    private val loginRequestCounter =
-        AtomicLong(0L)
-
-    // =========================================================
-    // SHOW
-    // =========================================================
 
     @JvmStatic
     fun show(
@@ -45,10 +36,6 @@ object UnityGameUIBridge {
         }
     }
 
-    // =========================================================
-    // HIDE
-    // =========================================================
-
     @JvmStatic
     fun hide() {
 
@@ -62,54 +49,11 @@ object UnityGameUIBridge {
         } else {
 
             mainHandler.post {
-
                 GameMenu.hide()
             }
         }
     }
 
-    // =========================================================
-    // DESTROY
-    // =========================================================
-
-    @JvmStatic
-    fun destroy() {
-
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.destroy()
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.destroy()
-            }
-        }
-    }
-
-    // =========================================================
-    // GAME STATE
-    // =========================================================
-
-    /**
-     * menu:
-     *
-     * 0 = MAIN
-     * 1 = LAN
-     * 2 = COMMUNITY
-     * 3 = CHARACTER
-     * 4 = SETTINGS
-     * 5 = ABOUT
-     *
-     * networkActive:
-     *
-     * true  = داخل بازی/اتصال فعال
-     * false = بدون اتصال فعال
-     */
     @JvmStatic
     fun setGameState(
         menu: Int,
@@ -138,42 +82,27 @@ object UnityGameUIBridge {
         }
     }
 
-    // =========================================================
-    // START GAME
-    // =========================================================
-
-    /**
-     * فقط Event UI.
+    /*
+     * فقط signal.
      *
-     * اینجا هیچ NetworkManager،
-     * Uri،
-     * StartClient،
-     * IP،
-     * Port
-     * وجود ندارد.
+     * Frida این متد را می‌گیرد
+     * و اتصال واقعی را انجام می‌دهد.
      */
     @JvmStatic
     fun startGame() {
 
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.onStartGameClicked()
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.onStartGameClicked()
-            }
-        }
+        /*
+         * اینجا هیچ:
+         * IP
+         * Port
+         * NetworkManager
+         * StartClient
+         *
+         * وجود ندارد.
+         *
+         * عمداً خالی است تا Frida آن را بگیرد.
+         */
     }
-
-    // =========================================================
-    // JOIN NOTIFICATION
-    // =========================================================
 
     @JvmStatic
     fun showJoinNotification() {
@@ -188,206 +117,24 @@ object UnityGameUIBridge {
         } else {
 
             mainHandler.post {
-
                 GameMenu.showJoinNotification()
             }
         }
     }
 
-    @JvmStatic
-    fun clearJoinNotification() {
-
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.clearJoinNotification()
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.clearJoinNotification()
-            }
-        }
-    }
-
-    // =========================================================
-    // CHARACTER
-    // =========================================================
-
+    /*
+     * فقط signal.
+     *
+     * Frida original Character button
+     * را اجرا می‌کند.
+     */
     @JvmStatic
     fun openCharacter() {
 
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.openCharacterFromBridge()
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.openCharacterFromBridge()
-            }
-        }
-    }
-
-    // =========================================================
-    // CHARACTER DATA
-    // =========================================================
-
-    /**
-     * Frida می‌تواند اطلاعات Character را
-     * از Unity گرفته و به Kotlin بدهد.
-     */
-    @JvmStatic
-    fun setCharacterInfo(
-        name: String?,
-        role: String?,
-        money: String?
-    ) {
-
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.setCharacterInfo(
-                name,
-                role,
-                money
-            )
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.setCharacterInfo(
-                    name,
-                    role,
-                    money
-                )
-            }
-        }
-    }
-
-    @JvmStatic
-    fun clearCharacterInfo() {
-
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.clearCharacterInfo()
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.clearCharacterInfo()
-            }
-        }
-    }
-
-    // =========================================================
-    // LOGIN
-    // =========================================================
-
-    /**
-     * Event فقط.
-     *
-     * Login خودش هیچ شبکه‌ای انجام نمی‌دهد.
-     */
-    @JvmStatic
-    fun requestLogin() {
-
-        loginRequestCounter.incrementAndGet()
-    }
-
-    /**
-     * آخرین شماره درخواست Login.
-     *
-     * Frida می‌تواند این مقدار را Poll کند.
-     */
-    @JvmStatic
-    fun getLoginRequestId(): Long {
-
-        return loginRequestCounter.get()
-    }
-
-    // =========================================================
-    // HELP
-    // =========================================================
-
-    @JvmStatic
-    fun openHelp() {
-
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.openHelp()
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.openHelp()
-            }
-        }
-    }
-
-    @JvmStatic
-    fun closeHelp() {
-
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.closeHelp()
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.closeHelp()
-            }
-        }
-    }
-
-    // =========================================================
-    // CHARACTER -> MAIN
-    // =========================================================
-
-    /**
-     * برای BackMenu واقعی بهتر است Frida
-     * setGameState(0, false) را صدا بزند.
-     *
-     * این API فقط برای کنترل مستقیم UI است.
-     */
-    @JvmStatic
-    fun closeCharacterToMain() {
-
-        if (
-            Looper.myLooper() ==
-            Looper.getMainLooper()
-        ) {
-
-            GameMenu.closeCharacterToMain()
-
-        } else {
-
-            mainHandler.post {
-
-                GameMenu.closeCharacterToMain()
-            }
-        }
+        /*
+         * عمدی خالی است.
+         *
+         * Frida این event را می‌گیرد.
+         */
     }
 }
