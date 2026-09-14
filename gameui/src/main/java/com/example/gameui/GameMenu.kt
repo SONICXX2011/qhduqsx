@@ -1,6 +1,8 @@
 package com.example.gameui
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,13 +28,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.OutlinedButton
 import androidx.compose.material.OutlinedTextField
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -58,6 +60,14 @@ import java.util.TimeZone
 object GameMenu {
 
     private const val TAG = "GameMenu"
+
+    /*
+     * ========================================================
+     * GAME EDITOR LINK
+     * ========================================================
+     */
+    private const val GAME_EDITOR_URL =
+        "https://rubika.ir/SONICSELFPV"
 
     private val mainHandler =
         Handler(Looper.getMainLooper())
@@ -88,6 +98,24 @@ object GameMenu {
 
     private var notificationToken = 0L
 
+    /*
+     * ========================================================
+     * PLAYER INFO
+     * ========================================================
+     *
+     * این مقدار فقط از Bridge/Frida می‌آید.
+     *
+     * خارج از Character تغییر داده نمی‌شود.
+     */
+    private var playerName by
+        mutableStateOf("Null")
+
+    private var playerRole by
+        mutableStateOf("Null")
+
+    private var playerMoney by
+        mutableStateOf("Null")
+
     private var composeView: ComposeView? = null
     private var lifecycleOwner: GameLifecycleOwner? = null
 
@@ -104,6 +132,11 @@ object GameMenu {
         BLUE
     }
 
+    /*
+     * ========================================================
+     * SHOW
+     * ========================================================
+     */
     @JvmStatic
     fun show(activity: Activity) {
 
@@ -201,10 +234,6 @@ object GameMenu {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
-            /*
-             * مهم:
-             * ComposeView خودش هیچ background ندارد.
-             */
             view.visibility =
                 View.GONE
 
@@ -239,6 +268,11 @@ object GameMenu {
         }
     }
 
+    /*
+     * ========================================================
+     * HIDE
+     * ========================================================
+     */
     @JvmStatic
     fun hide() {
 
@@ -306,8 +340,6 @@ object GameMenu {
              * =================================================
              * NETWORK
              * =================================================
-             *
-             * Network همیشه اولویت اول است.
              */
             if (active) {
 
@@ -323,16 +355,6 @@ object GameMenu {
              * =================================================
              * EXIT RESTORE
              * =================================================
-             *
-             * این همان اصلاح اصلی است.
-             *
-             * وقتی Frida واقعاً:
-             *
-             * menu = 0
-             * active = false
-             *
-             * فرستاد، خود Kotlin باید exitWaiting
-             * را آزاد کند.
              */
             if (exitWaiting) {
 
@@ -375,9 +397,6 @@ object GameMenu {
              * =================================================
              * CHARACTER LOCK
              * =================================================
-             *
-             * وقتی Character باز است، Poller حق ندارد
-             * Main را روی آن بیندازد.
              */
             if (characterLocked) {
 
@@ -433,7 +452,7 @@ object GameMenu {
 
             /*
              * =================================================
-             * OTHER GAME STATES
+             * OTHER
              * =================================================
              */
             visible =
@@ -502,6 +521,186 @@ object GameMenu {
 
     /*
      * ========================================================
+     * PLAYER NAME FROM FRIDA
+     * ========================================================
+     *
+     * Frida باید فقط زمانی این متد را صدا بزند که Character
+     * واقعاً باز شده باشد.
+     */
+    @JvmStatic
+    fun setPlayerName(
+        name: String?
+    ) {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+            mainHandler.post {
+                setPlayerName(
+                    name
+                )
+            }
+            return
+        }
+
+        try {
+
+            val cleanName =
+                name
+                    ?.trim()
+                    ?.takeIf {
+                        it.isNotEmpty()
+                    }
+                    ?: "Null"
+
+            if (
+                playerName != cleanName
+            ) {
+
+                playerName =
+                    cleanName
+
+                Log.d(
+                    TAG,
+                    "PLAYER NAME UPDATED -> $playerName"
+                )
+            }
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "setPlayerName failed",
+                t
+            )
+        }
+    }
+
+    /*
+     * ========================================================
+     * CLEAR PLAYER NAME
+     * ========================================================
+     *
+     * در صورت نیاز هنگام خروج/scene جدید قابل استفاده است.
+     */
+    @JvmStatic
+    fun clearPlayerName() {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+            mainHandler.post {
+                clearPlayerName()
+            }
+            return
+        }
+
+        try {
+
+            playerName =
+                "Null"
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "clearPlayerName failed",
+                t
+            )
+        }
+    }
+
+    /*
+     * ========================================================
+     * ROLE
+     * ========================================================
+     *
+     * فعلاً هیچ منطقی برای Role دست نمی‌خورد.
+     * فقط آماده است که بعداً از Bridge مقداردهی شود.
+     */
+    @JvmStatic
+    fun setPlayerRole(
+        role: String?
+    ) {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+            mainHandler.post {
+                setPlayerRole(
+                    role
+                )
+            }
+            return
+        }
+
+        try {
+
+            playerRole =
+                role
+                    ?.trim()
+                    ?.takeIf {
+                        it.isNotEmpty()
+                    }
+                    ?: "Null"
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "setPlayerRole failed",
+                t
+            )
+        }
+    }
+
+    /*
+     * ========================================================
+     * MONEY
+     * ========================================================
+     */
+    @JvmStatic
+    fun setPlayerMoney(
+        money: String?
+    ) {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+            mainHandler.post {
+                setPlayerMoney(
+                    money
+                )
+            }
+            return
+        }
+
+        try {
+
+            playerMoney =
+                money
+                    ?.trim()
+                    ?.takeIf {
+                        it.isNotEmpty()
+                    }
+                    ?: "Null"
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "setPlayerMoney failed",
+                t
+            )
+        }
+    }
+
+    /*
+     * ========================================================
      * BACK MENU EVENT
      * ========================================================
      */
@@ -529,9 +728,6 @@ object GameMenu {
             currentPage =
                 Page.MAIN
 
-            /*
-             * فقط وقتی offline هستیم نمایش بده.
-             */
             visible =
                 !networkActive
 
@@ -575,12 +771,6 @@ object GameMenu {
             characterLocked =
                 false
 
-            /*
-             * اینجا عمداً true می‌شود.
-             *
-             * فقط setGameState(0,false)
-             * اجازه آزاد کردنش را دارد.
-             */
             exitWaiting =
                 true
 
@@ -630,6 +820,57 @@ object GameMenu {
     fun openCharacterFromBridge() {
 
         onCharacterEvent()
+    }
+
+    /*
+     * ========================================================
+     * GAME EDITOR LINK
+     * ========================================================
+     */
+    private fun openGameEditorLink() {
+
+        try {
+
+            val view =
+                composeView
+                    ?: return
+
+            val context =
+                view.context
+
+            val intent =
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(
+                        GAME_EDITOR_URL
+                    )
+                )
+
+            if (
+                context !is Activity
+            ) {
+                intent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK
+                )
+            }
+
+            context.startActivity(
+                intent
+            )
+
+            Log.d(
+                TAG,
+                "GAME EDITOR LINK OPENED"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "openGameEditorLink failed",
+                t
+            )
+        }
     }
 
     /*
@@ -758,6 +999,37 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
+            /*
+             * دکمه سبز سازنده / ادیت کننده
+             */
+            GlassButton(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.TopCenter
+                        )
+                        .offset(
+                            x = 18.dp
+                        )
+                        .padding(
+                            top = 22.dp
+                        )
+                        .width(
+                            205.dp
+                        ),
+
+                text =
+                    "فرد ادیت کننده گیم",
+
+                accent =
+                    Accent.GREEN,
+
+                onClick = {
+
+                    openGameEditorLink()
+                }
+            )
+
             Row(
                 modifier =
                     Modifier
@@ -854,16 +1126,6 @@ object GameMenu {
     /*
      * ========================================================
      * CHARACTER PAGE
-     *
-     * فقط:
-     *
-     * Name
-     * Role
-     * Money
-     * Iran Time
-     * Login / Register
-     *
-     * هیچ background/card ندارد.
      * ========================================================
      */
     @Composable
@@ -890,12 +1152,12 @@ object GameMenu {
                     Alignment.CenterHorizontally
             ) {
 
-                SimpleInfoText(
+                CharacterInfoText(
                     title =
                         "Name",
 
                     value =
-                        "Null"
+                        playerName
                 )
 
                 Spacer(
@@ -905,12 +1167,12 @@ object GameMenu {
                         )
                 )
 
-                SimpleInfoText(
+                CharacterInfoText(
                     title =
                         "Role",
 
                     value =
-                        "Null"
+                        playerRole
                 )
 
                 Spacer(
@@ -920,12 +1182,12 @@ object GameMenu {
                         )
                 )
 
-                SimpleInfoText(
+                CharacterInfoText(
                     title =
                         "Money",
 
                     value =
-                        "Null"
+                        playerMoney
                 )
 
                 Spacer(
@@ -935,7 +1197,7 @@ object GameMenu {
                         )
                 )
 
-                SimpleInfoText(
+                CharacterInfoText(
                     title =
                         "Iran Time",
 
@@ -974,11 +1236,14 @@ object GameMenu {
 
     /*
      * ========================================================
-     * SIMPLE CHARACTER TEXT
+     * CHARACTER INFO TEXT
+     *
+     * تزئین خیلی کوچک دور اطلاعات
+     * بدون تغییر اساسی در طراحی Character
      * ========================================================
      */
     @Composable
-    private fun SimpleInfoText(
+    private fun CharacterInfoText(
         title: String,
         value: String
     ) {
@@ -987,8 +1252,30 @@ object GameMenu {
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        color =
+                            ComposeColor(
+                                0x3358E59A
+                            ),
+                        shape =
+                            RoundedCornerShape(
+                                10.dp
+                            )
+                    )
+                    .background(
+                        color =
+                            ComposeColor(
+                                0x12111A16
+                            ),
+                        shape =
+                            RoundedCornerShape(
+                                10.dp
+                            )
+                    )
                     .padding(
-                        vertical = 2.dp
+                        horizontal = 12.dp,
+                        vertical = 8.dp
                     ),
 
             horizontalArrangement =
@@ -1005,6 +1292,9 @@ object GameMenu {
                 fontSize =
                     15.sp,
 
+                fontWeight =
+                    FontWeight.Medium,
+
                 color =
                     ComposeColor(
                         0xFFD1D9D5
@@ -1013,7 +1303,9 @@ object GameMenu {
 
             Text(
                 text =
-                    value,
+                    value.ifBlank {
+                        "Null"
+                    },
 
                 fontSize =
                     15.sp,
