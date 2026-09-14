@@ -32,8 +32,8 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -103,17 +103,24 @@ object GameMenu {
      * PLAYER INFO
      * ========================================================
      *
-     * این مقدار فقط از Bridge/Frida می‌آید.
+     * این propertyها عمداً با نام current... هستند
+     * تا با متدهای JVM:
      *
-     * خارج از Character تغییر داده نمی‌شود.
+     * setPlayerName()
+     * setPlayerRole()
+     * setPlayerMoney()
+     *
+     * clash نداشته باشند.
+     *
+     * فقط Name فعلاً از Frida مقدار واقعی می‌گیرد.
      */
-    private var playerName by
+    private var currentPlayerName by
         mutableStateOf("Null")
 
-    private var playerRole by
+    private var currentPlayerRole by
         mutableStateOf("Null")
 
-    private var playerMoney by
+    private var currentPlayerMoney by
         mutableStateOf("Null")
 
     private var composeView: ComposeView? = null
@@ -234,6 +241,9 @@ object GameMenu {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
+            /*
+             * ComposeView خودش background ندارد.
+             */
             view.visibility =
                 View.GONE
 
@@ -340,6 +350,8 @@ object GameMenu {
              * =================================================
              * NETWORK
              * =================================================
+             *
+             * Network همیشه اولویت اول است.
              */
             if (active) {
 
@@ -355,6 +367,13 @@ object GameMenu {
              * =================================================
              * EXIT RESTORE
              * =================================================
+             *
+             * وقتی:
+             *
+             * menu = 0
+             * active = false
+             *
+             * رسید، UI دوباره آزاد می‌شود.
              */
             if (exitWaiting) {
 
@@ -397,6 +416,9 @@ object GameMenu {
              * =================================================
              * CHARACTER LOCK
              * =================================================
+             *
+             * وقتی Character باز است،
+             * Poller نباید Main را جایگزین کند.
              */
             if (characterLocked) {
 
@@ -452,7 +474,7 @@ object GameMenu {
 
             /*
              * =================================================
-             * OTHER
+             * OTHER GAME STATES
              * =================================================
              */
             visible =
@@ -524,8 +546,16 @@ object GameMenu {
      * PLAYER NAME FROM FRIDA
      * ========================================================
      *
-     * Frida باید فقط زمانی این متد را صدا بزند که Character
-     * واقعاً باز شده باشد.
+     * Frida فقط وقتی Character باز است
+     * باید این متد را صدا بزند.
+     *
+     * منبع واقعی Name در Frida:
+     *
+     * GtaMenuControl
+     *      -> _charSelect
+     *      -> nameInput
+     *      -> m_Text
+     *      -> content
      */
     @JvmStatic
     fun setPlayerName(
@@ -555,15 +585,15 @@ object GameMenu {
                     ?: "Null"
 
             if (
-                playerName != cleanName
+                currentPlayerName != cleanName
             ) {
 
-                playerName =
+                currentPlayerName =
                     cleanName
 
                 Log.d(
                     TAG,
-                    "PLAYER NAME UPDATED -> $playerName"
+                    "PLAYER NAME UPDATED -> $currentPlayerName"
                 )
             }
 
@@ -581,8 +611,6 @@ object GameMenu {
      * ========================================================
      * CLEAR PLAYER NAME
      * ========================================================
-     *
-     * در صورت نیاز هنگام خروج/scene جدید قابل استفاده است.
      */
     @JvmStatic
     fun clearPlayerName() {
@@ -599,7 +627,7 @@ object GameMenu {
 
         try {
 
-            playerName =
+            currentPlayerName =
                 "Null"
 
         } catch (t: Throwable) {
@@ -616,9 +644,6 @@ object GameMenu {
      * ========================================================
      * ROLE
      * ========================================================
-     *
-     * فعلاً هیچ منطقی برای Role دست نمی‌خورد.
-     * فقط آماده است که بعداً از Bridge مقداردهی شود.
      */
     @JvmStatic
     fun setPlayerRole(
@@ -639,7 +664,7 @@ object GameMenu {
 
         try {
 
-            playerRole =
+            currentPlayerRole =
                 role
                     ?.trim()
                     ?.takeIf {
@@ -681,7 +706,7 @@ object GameMenu {
 
         try {
 
-            playerMoney =
+            currentPlayerMoney =
                 money
                     ?.trim()
                     ?.takeIf {
@@ -728,6 +753,9 @@ object GameMenu {
             currentPage =
                 Page.MAIN
 
+            /*
+             * فقط وقتی offline هستیم نمایش بده.
+             */
             visible =
                 !networkActive
 
@@ -771,6 +799,10 @@ object GameMenu {
             characterLocked =
                 false
 
+            /*
+             * عمداً true می‌شود.
+             * فقط Main واقعی + Offline آزادش می‌کند.
+             */
             exitWaiting =
                 true
 
@@ -1000,7 +1032,12 @@ object GameMenu {
         ) {
 
             /*
-             * دکمه سبز سازنده / ادیت کننده
+             * =================================================
+             * GAME EDITOR BUTTON
+             * =================================================
+             *
+             * بالای مرکز
+             * کمی متمایل به راست
              */
             GlassButton(
                 modifier =
@@ -1157,7 +1194,7 @@ object GameMenu {
                         "Name",
 
                     value =
-                        playerName
+                        currentPlayerName
                 )
 
                 Spacer(
@@ -1172,7 +1209,7 @@ object GameMenu {
                         "Role",
 
                     value =
-                        playerRole
+                        currentPlayerRole
                 )
 
                 Spacer(
@@ -1187,7 +1224,7 @@ object GameMenu {
                         "Money",
 
                     value =
-                        playerMoney
+                        currentPlayerMoney
                 )
 
                 Spacer(
@@ -1237,10 +1274,9 @@ object GameMenu {
     /*
      * ========================================================
      * CHARACTER INFO TEXT
-     *
-     * تزئین خیلی کوچک دور اطلاعات
-     * بدون تغییر اساسی در طراحی Character
      * ========================================================
+     *
+     * تزئین کوچک و سبک فقط دور اطلاعات.
      */
     @Composable
     private fun CharacterInfoText(
@@ -1254,10 +1290,12 @@ object GameMenu {
                     .fillMaxWidth()
                     .border(
                         width = 1.dp,
+
                         color =
                             ComposeColor(
                                 0x3358E59A
                             ),
+
                         shape =
                             RoundedCornerShape(
                                 10.dp
@@ -1268,6 +1306,7 @@ object GameMenu {
                             ComposeColor(
                                 0x12111A16
                             ),
+
                         shape =
                             RoundedCornerShape(
                                 10.dp
