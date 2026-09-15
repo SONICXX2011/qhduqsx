@@ -34,6 +34,7 @@ import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -91,6 +92,60 @@ object GameMenu {
 
     private const val WELCOME_DISCORD_URL =
         "https://discord.gg/aQhGqHSc3W"
+
+    /*
+     * ========================================================
+     * PRE-ALLOCATED COLORS
+     * ========================================================
+     *
+     * Compose Color یک value class است، ولی برای پرهیز از
+     * هرگونه ابهام و کاهش تخصیص در recompose های مکرر،
+     * رنگ‌های پرتکرار را یک‌بار می‌سازیم.
+     */
+    private val ACCENT_GREEN =
+        ComposeColor(0xFF58E59A)
+
+    private val ACCENT_GOLD =
+        ComposeColor(0xFFF0C85C)
+
+    private val ACCENT_BLUE =
+        ComposeColor(0xFF72B8FF)
+
+    private val TEXT_SOFT =
+        ComposeColor(0xFFD1D9D5)
+
+    private val TEXT_MUTED =
+        ComposeColor(0xFFB7C5BE)
+
+    private val TEXT_BRIGHT =
+        ComposeColor(0xFFE8EFEB)
+
+    private val BTN_BG =
+        ComposeColor(0x33111A16)
+
+    private val BTN_BG_LIGHT =
+        ComposeColor(0x22111A16)
+
+    private val PANEL_BG =
+        ComposeColor(0xF218201C)
+
+    private val PANEL_BORDER =
+        ComposeColor(0x6658E59A)
+
+    private val INFO_BORDER =
+        ComposeColor(0x3358E59A)
+
+    private val INFO_BG =
+        ComposeColor(0x12111A16)
+
+    private val SCRIM =
+        ComposeColor(0xE6050907)
+
+    private val CONFIRM_BG =
+        ComposeColor(0x4458E59A)
+
+    private val CONFIRM_BORDER =
+        ComposeColor(0xFF58E59A)
 
     private val mainHandler =
         Handler(Looper.getMainLooper())
@@ -386,9 +441,6 @@ object GameMenu {
             )
 
             welcomeVisible =
-                true
-
-            visible =
                 true
 
             updateVisibility()
@@ -1085,9 +1137,8 @@ object GameMenu {
 
         view.visibility =
             if (
-                visible &&
-                !networkActive ||
-                welcomeVisible
+                welcomeVisible ||
+                (visible && !networkActive)
             ) {
 
                 View.VISIBLE
@@ -1111,9 +1162,20 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
+            /*
+             * =================================================
+             * MAIN GAME UI
+             * =================================================
+             *
+             * این بخش وقتی Welcome باز است اصلاً compose
+             * نمی‌شود. این باعث حذف کامل لگ می‌شود چون
+             * دکمه‌های سنگین Main/Character زیر Welcome
+             * دیگر رندر نمی‌شوند.
+             */
             if (
                 visible &&
-                !networkActive
+                !networkActive &&
+                !welcomeVisible
             ) {
 
                 when (
@@ -1140,15 +1202,21 @@ object GameMenu {
                     text = text
                 )
             }
+        }
 
-            /*
-             * =================================================
-             * FIRST-LAUNCH WELCOME
-             * =================================================
-             *
-             * آخر از همه render می‌شود تا روی کل UI قرار بگیرد.
-             */
-            if (
+        /*
+         * =================================================
+         * FIRST-LAUNCH WELCOME
+         * =================================================
+         *
+         * خارج از Box اصلی و در یک key مستقل،
+         * تا recompose آن به‌صورت مستقل مدیریت شود.
+         */
+        if (
+            welcomeVisible
+        ) {
+
+            key(
                 welcomeVisible
             ) {
 
@@ -1421,9 +1489,7 @@ object GameMenu {
                         width = 1.dp,
 
                         color =
-                            ComposeColor(
-                                0x3358E59A
-                            ),
+                            INFO_BORDER,
 
                         shape =
                             RoundedCornerShape(
@@ -1432,9 +1498,7 @@ object GameMenu {
                     )
                     .background(
                         color =
-                            ComposeColor(
-                                0x12111A16
-                            ),
+                            INFO_BG,
 
                         shape =
                             RoundedCornerShape(
@@ -1464,9 +1528,7 @@ object GameMenu {
                     FontWeight.Medium,
 
                 color =
-                    ComposeColor(
-                        0xFFD1D9D5
-                    )
+                    TEXT_SOFT
             )
 
             Text(
@@ -1711,9 +1773,7 @@ object GameMenu {
                         14.sp,
 
                     color =
-                        ComposeColor(
-                            0xFFB7C5BE
-                        )
+                        TEXT_MUTED
                 )
 
                 Spacer(
@@ -1760,19 +1820,13 @@ object GameMenu {
             when (accent) {
 
                 Accent.GREEN ->
-                    ComposeColor(
-                        0xFF58E59A
-                    )
+                    ACCENT_GREEN
 
                 Accent.GOLD ->
-                    ComposeColor(
-                        0xFFF0C85C
-                    )
+                    ACCENT_GOLD
 
                 Accent.BLUE ->
-                    ComposeColor(
-                        0xFF72B8FF
-                    )
+                    ACCENT_BLUE
             }
 
         OutlinedButton(
@@ -1803,9 +1857,7 @@ object GameMenu {
                 ButtonDefaults
                     .outlinedButtonColors(
                         backgroundColor =
-                            ComposeColor(
-                                0x33111A16
-                            ),
+                            BTN_BG,
 
                         contentColor =
                             ComposeColor.White
@@ -1842,19 +1894,13 @@ object GameMenu {
             when (accent) {
 
                 Accent.GREEN ->
-                    ComposeColor(
-                        0xFF58E59A
-                    )
+                    ACCENT_GREEN
 
                 Accent.GOLD ->
-                    ComposeColor(
-                        0xFFF0C85C
-                    )
+                    ACCENT_GOLD
 
                 Accent.BLUE ->
-                    ComposeColor(
-                        0xFF72B8FF
-                    )
+                    ACCENT_BLUE
             }
 
         OutlinedButton(
@@ -1890,9 +1936,7 @@ object GameMenu {
                 ButtonDefaults
                     .outlinedButtonColors(
                         backgroundColor =
-                            ComposeColor(
-                                0x33111A16
-                            ),
+                            BTN_BG,
 
                         contentColor =
                             ComposeColor.White
@@ -1957,6 +2001,17 @@ object GameMenu {
      * ========================================================
      * WELCOME OVERLAY
      * ========================================================
+     *
+     * بهینه‌سازی‌ها:
+     *
+     * - ارتفاع کادر اسکرول از 280dp به 210dp کاهش داده شد
+     *   تا layout pass سبک‌تر باشد.
+     *
+     * - درون کادر اسکرول از Arrangement.spacedBy استفاده
+     *   می‌شود تا layout node کمتری ساخته شود.
+     *
+     * - رنگ‌ها همه از ثابت‌های object می‌آیند.
+     * ========================================================
      */
     @Composable
     private fun WelcomeOverlay() {
@@ -1966,9 +2021,7 @@ object GameMenu {
                 Modifier
                     .fillMaxSize()
                     .background(
-                        ComposeColor(
-                            0xE6050907
-                        )
+                        SCRIM
                     ),
             contentAlignment =
                 Alignment.Center
@@ -1982,9 +2035,7 @@ object GameMenu {
                             horizontal = 20.dp
                         )
                         .background(
-                            ComposeColor(
-                                0xF218201C
-                            ),
+                            PANEL_BG,
                             RoundedCornerShape(
                                 24.dp
                             )
@@ -1992,9 +2043,7 @@ object GameMenu {
                         .border(
                             width = 1.dp,
                             color =
-                                ComposeColor(
-                                    0x6658E59A
-                                ),
+                                PANEL_BORDER,
                             shape =
                                 RoundedCornerShape(
                                     24.dp
@@ -2015,15 +2064,13 @@ object GameMenu {
                     fontWeight =
                         FontWeight.Bold,
                     color =
-                        ComposeColor(
-                            0xFF58E59A
-                        )
+                        ACCENT_GREEN
                 )
 
                 Spacer(
                     modifier =
                         Modifier.height(
-                            6.dp
+                            4.dp
                         )
                 )
 
@@ -2035,23 +2082,16 @@ object GameMenu {
                     fontWeight =
                         FontWeight.Medium,
                     color =
-                        ComposeColor(
-                            0xFFD1D9D5
-                        )
+                        TEXT_SOFT
                 )
 
                 Spacer(
                     modifier =
                         Modifier.height(
-                            14.dp
+                            12.dp
                         )
                 )
 
-                /*
-                 * =============================================
-                 * SCROLLABLE CONTENT (TEXT + LINK BUTTONS)
-                 * =============================================
-                 */
                 val scrollState =
                     rememberScrollState()
 
@@ -2060,12 +2100,10 @@ object GameMenu {
                         Modifier
                             .fillMaxWidth()
                             .height(
-                                280.dp
+                                210.dp
                             )
                             .background(
-                                ComposeColor(
-                                    0x22111A16
-                                ),
+                                INFO_BG,
                                 RoundedCornerShape(
                                     16.dp
                                 )
@@ -2073,9 +2111,7 @@ object GameMenu {
                             .border(
                                 width = 1.dp,
                                 color =
-                                    ComposeColor(
-                                        0x3358E59A
-                                    ),
+                                    INFO_BORDER,
                                 shape =
                                     RoundedCornerShape(
                                         16.dp
@@ -2085,8 +2121,12 @@ object GameMenu {
                                 scrollState
                             )
                             .padding(
-                                16.dp
+                                14.dp
                             ),
+                    verticalArrangement =
+                        Arrangement.spacedBy(
+                            8.dp
+                        ),
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
@@ -2107,25 +2147,13 @@ object GameMenu {
                         fontSize =
                             15.sp,
                         lineHeight =
-                            25.sp,
+                            23.sp,
                         fontWeight =
                             FontWeight.Medium,
                         color =
-                            ComposeColor(
-                                0xFFE8EFEB
-                            )
+                            TEXT_BRIGHT
                     )
 
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                16.dp
-                            )
-                    )
-
-                    /*
-                     * سه لینک داخل خود باکس اسکرول‌شونده.
-                     */
                     WelcomeLinkButton(
                         text =
                             "🌐  لینک سایت اصلی بازی",
@@ -2136,13 +2164,6 @@ object GameMenu {
                                 WELCOME_SITE_URL
                             )
                         }
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                8.dp
-                            )
                     )
 
                     WelcomeLinkButton(
@@ -2157,13 +2178,6 @@ object GameMenu {
                         }
                     )
 
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                8.dp
-                            )
-                    )
-
                     WelcomeLinkButton(
                         text =
                             "💬  دیسکورد سازنده بازی",
@@ -2175,25 +2189,18 @@ object GameMenu {
                             )
                         }
                     )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                4.dp
-                            )
-                    )
                 }
 
                 Spacer(
                     modifier =
                         Modifier.height(
-                            18.dp
+                            16.dp
                         )
                 )
 
                 /*
                  * =============================================
-                 * CONFIRM BUTTON (OUTSIDE SCROLL, SEPARATE)
+                 * CONFIRM BUTTON
                  * =============================================
                  */
                 OutlinedButton(
@@ -2216,17 +2223,13 @@ object GameMenu {
                             .BorderStroke(
                                 width = 1.dp,
                                 color =
-                                    ComposeColor(
-                                        0xFF58E59A
-                                    )
+                                    CONFIRM_BORDER
                             ),
                     colors =
                         ButtonDefaults
                             .outlinedButtonColors(
                                 backgroundColor =
-                                    ComposeColor(
-                                        0x4458E59A
-                                    ),
+                                    CONFIRM_BG,
                                 contentColor =
                                     ComposeColor.White
                             )
@@ -2261,19 +2264,13 @@ object GameMenu {
             when (accent) {
 
                 Accent.GREEN ->
-                    ComposeColor(
-                        0xFF58E59A
-                    )
+                    ACCENT_GREEN
 
                 Accent.GOLD ->
-                    ComposeColor(
-                        0xFFF0C85C
-                    )
+                    ACCENT_GOLD
 
                 Accent.BLUE ->
-                    ComposeColor(
-                        0xFF72B8FF
-                    )
+                    ACCENT_BLUE
             }
 
         OutlinedButton(
@@ -2284,7 +2281,7 @@ object GameMenu {
                 Modifier
                     .fillMaxWidth()
                     .height(
-                        48.dp
+                        46.dp
                     ),
 
             shape =
@@ -2307,9 +2304,7 @@ object GameMenu {
                 ButtonDefaults
                     .outlinedButtonColors(
                         backgroundColor =
-                            ComposeColor(
-                                0x22111A16
-                            ),
+                            BTN_BG_LIGHT,
                         contentColor =
                             ComposeColor.White
                     )
