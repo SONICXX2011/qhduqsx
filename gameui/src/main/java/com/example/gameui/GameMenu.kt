@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +35,8 @@ import androidx.compose.material.OutlinedButton
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -43,8 +47,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -143,6 +150,46 @@ object GameMenu {
 
     private val CONFIRM_BORDER =
         ComposeColor(0xFF58E59A)
+
+    /*
+     * ========================================================
+     * WELCOME TEXT (STATIC — ALLOCATED ONCE)
+     * ========================================================
+     */
+    private const val WELCOME_BODY_TEXT =
+        "سلام! به تهران بزرگ خوش آمدید\n\n" +
+        "این بازی توسط XXX SONIC ادیت شده است " +
+        "و در مراحلی نیست که انتشار پیدا کند...\n\n" +
+        "شما اول تستر هستید!\n\n" +
+        "نباید این نسخه را در اختیار کسی بگذارید " +
+        "و نسخه هنوز کامل نشده است.\n\n" +
+        "سازنده اصلی این بازی :\n" +
+        "محمد علیزاده | Mohammad Alizadeh\n\n" +
+        "برای ارتباط با سازنده از لینک‌های زیر استفاده کنید 👇"
+
+    /*
+     * ========================================================
+     * PRE-ALLOCATED LINKS LIST
+     * ========================================================
+     */
+    private val WELCOME_LINKS =
+        listOf(
+            Triple(
+                "🌐  لینک سایت اصلی بازی",
+                Accent.GREEN,
+                WELCOME_SITE_URL
+            ),
+            Triple(
+                "▶  کانال یوتیوب سازنده",
+                Accent.BLUE,
+                WELCOME_YOUTUBE_URL
+            ),
+            Triple(
+                "💬  دیسکورد سازنده بازی",
+                Accent.GOLD,
+                WELCOME_DISCORD_URL
+            )
+        )
 
     private val mainHandler =
         Handler(Looper.getMainLooper())
@@ -1086,15 +1133,27 @@ object GameMenu {
     @Composable
     private fun GameMenuRoot() {
 
+        /*
+         * derivedStateOf برای محاسبه شرط نمایش UI اصلی.
+         *
+         * این باعث می‌شود Composable های سنگین MainPage / CharacterPage
+         * فقط زمانی recompose شوند که نتیجه این شرط واقعاً تغییر کند.
+         */
+        val showMainUi by remember {
+            derivedStateOf {
+                visible &&
+                    !networkActive &&
+                    !welcomeVisible
+            }
+        }
+
         Box(
             modifier =
                 Modifier.fillMaxSize()
         ) {
 
             if (
-                visible &&
-                !networkActive &&
-                !welcomeVisible
+                showMainUi
             ) {
 
                 when (
@@ -1900,287 +1959,295 @@ object GameMenu {
 
     /*
      * ========================================================
-     * WELCOME OVERLAY
+     * WELCOME OVERLAY (PERFORMANCE OPTIMIZED + RTL)
      * ========================================================
      *
-     * رفع باگ اسکرول:
+     * بهینه‌سازی‌های اعمال شده:
      *
-     * - کادر اسکرول داخل یک Box قرار گرفت
-     * - .clip(RoundedCornerShape(16.dp)) اضافه شد تا محتوای
-     *   اسکرول‌شونده از گوشه‌های گرد بیرون نزند و روی border
-     *   و پنل مادری overlap نکند
-     * - padding از modifier باکس اسکرول برداشته شد و به
-     *   Column داخلی منتقل شد تا اسکرول از لبه‌های واقعی
-     *   کادر شروع شود
+     * ۱. LazyColumn جای Column + verticalScroll:
+     *    فقط آیتم‌های در حال مشاهده compose می‌شوند.
+     *
+     * ۲. CompositionLocalProvider با LayoutDirection.Rtl:
+     *    کل پنجره راست‌چین می‌شود.
+     *
+     * ۳. TextAlign.Start برای متن فارسی:
+     *    به صورت خودکار در RTL به راست تراز می‌شود.
+     *
+     * ۴. TextAlign.Right برای متن فارسی:
+     *    تضمین راست‌چین بودن مستقل از layout direction.
+     *
+     * ۵. WELCOME_LINKS از پیش allocated:
+     *    در هر recompose لیست جدید ساخته نمی‌شود.
+     *
+     * ۶. WELCOME_BODY_TEXT به عنوان const:
+     *    رشته ثابت در زمان compile، بدون alloc در runtime.
+     *
+     * ۷. key() در LazyColumn items:
+     *    Compose از state هر آیتم به درستی نگهداری می‌کند.
      * ========================================================
      */
     @Composable
     private fun WelcomeOverlay() {
 
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        SCRIM
-                    ),
-            contentAlignment =
-                Alignment.Center
+        /*
+         * اعمال RTL به کل پنجره Welcome.
+         *
+         * این باعث می‌شود padding start/end،
+         * alignment و ترتیب عناصر افقی به صورت خودکار
+         * برای فارسی معکوس شوند.
+         */
+        CompositionLocalProvider(
+            LocalLayoutDirection provides
+                LayoutDirection.Rtl
         ) {
 
-            Column(
+            Box(
                 modifier =
                     Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = 20.dp
-                        )
+                        .fillMaxSize()
                         .background(
-                            PANEL_BG,
-                            RoundedCornerShape(
-                                24.dp
-                            )
-                        )
-                        .border(
-                            width = 1.dp,
-                            color =
-                                PANEL_BORDER,
-                            shape =
-                                RoundedCornerShape(
-                                    24.dp
-                                )
-                        )
-                        .padding(
-                            18.dp
+                            SCRIM
                         ),
-                horizontalAlignment =
-                    Alignment.CenterHorizontally
+                contentAlignment =
+                    Alignment.Center
             ) {
 
-                Text(
-                    text =
-                        "تهران بزرگ",
-                    fontSize =
-                        26.sp,
-                    fontWeight =
-                        FontWeight.Bold,
-                    color =
-                        ACCENT_GREEN
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(
-                            4.dp
-                        )
-                )
-
-                Text(
-                    text =
-                        "پیام مهم سازنده",
-                    fontSize =
-                        14.sp,
-                    fontWeight =
-                        FontWeight.Medium,
-                    color =
-                        TEXT_SOFT
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(
-                            12.dp
-                        )
-                )
-
-                val scrollState =
-                    rememberScrollState()
-
-                /*
-                 * =============================================
-                 * SCROLL BOX (FIXED)
-                 * =============================================
-                 *
-                 * clip قبل از background و border
-                 * تا محتوا دقیقاً داخل کادر گرد برش بخورد.
-                 */
-                Box(
+                Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(
-                                210.dp
-                            )
-                            .clip(
-                                RoundedCornerShape(
-                                    16.dp
-                                )
+                            .padding(
+                                horizontal = 20.dp
                             )
                             .background(
-                                INFO_BG,
+                                PANEL_BG,
                                 RoundedCornerShape(
-                                    16.dp
+                                    24.dp
                                 )
                             )
                             .border(
                                 width = 1.dp,
                                 color =
-                                    INFO_BORDER,
+                                    PANEL_BORDER,
                                 shape =
                                     RoundedCornerShape(
-                                        16.dp
+                                        24.dp
                                     )
                             )
-                ) {
-
-                    Column(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(
-                                    scrollState
-                                )
-                                .padding(
-                                    14.dp
-                                ),
-                        horizontalAlignment =
-                            Alignment.CenterHorizontally
-                    ) {
-
-                        Text(
-                            text =
-                                "سلام! به تهران بزرگ خوش آمدید\n\n" +
-                                "این بازی توسط XXX SONIC ادیت شده است " +
-                                "و در مراحلی نیست که انتشار پیدا کند...\n\n" +
-                                "شما اول تستر هستید!\n\n" +
-                                "نباید این نسخه را در اختیار کسی بگذارید " +
-                                "و نسخه هنوز کامل نشده است.\n\n" +
-                                "سازنده اصلی این بازی :\n" +
-                                "محمد علیزاده | Mohammad Alizadeh\n\n" +
-                                "برای ارتباط با سازنده از لینک‌های زیر استفاده کنید 👇",
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                            fontSize =
-                                15.sp,
-                            lineHeight =
-                                23.sp,
-                            fontWeight =
-                                FontWeight.Medium,
-                            color =
-                                TEXT_BRIGHT
-                        )
-
-                        Spacer(
-                            modifier =
-                                Modifier.height(
-                                    12.dp
-                                )
-                        )
-
-                        WelcomeLinkButton(
-                            text =
-                                "🌐  لینک سایت اصلی بازی",
-                            accent =
-                                Accent.GREEN,
-                            onClick = {
-                                openExternalLink(
-                                    WELCOME_SITE_URL
-                                )
-                            }
-                        )
-
-                        Spacer(
-                            modifier =
-                                Modifier.height(
-                                    8.dp
-                                )
-                        )
-
-                        WelcomeLinkButton(
-                            text =
-                                "▶  کانال یوتیوب سازنده",
-                            accent =
-                                Accent.BLUE,
-                            onClick = {
-                                openExternalLink(
-                                    WELCOME_YOUTUBE_URL
-                                )
-                            }
-                        )
-
-                        Spacer(
-                            modifier =
-                                Modifier.height(
-                                    8.dp
-                                )
-                        )
-
-                        WelcomeLinkButton(
-                            text =
-                                "💬  دیسکورد سازنده بازی",
-                            accent =
-                                Accent.GOLD,
-                            onClick = {
-                                openExternalLink(
-                                    WELCOME_DISCORD_URL
-                                )
-                            }
-                        )
-                    }
-                }
-
-                Spacer(
-                    modifier =
-                        Modifier.height(
-                            16.dp
-                        )
-                )
-
-                /*
-                 * =============================================
-                 * CONFIRM BUTTON
-                 * =============================================
-                 */
-                OutlinedButton(
-                    onClick = {
-                        confirmWelcomeMessage()
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(
-                                54.dp
+                            .padding(
+                                18.dp
                             ),
-                    shape =
-                        RoundedCornerShape(
-                            17.dp
-                        ),
-                    border =
-                        androidx.compose
-                            .foundation
-                            .BorderStroke(
-                                width = 1.dp,
-                                color =
-                                    CONFIRM_BORDER
-                            ),
-                    colors =
-                        ButtonDefaults
-                            .outlinedButtonColors(
-                                backgroundColor =
-                                    CONFIRM_BG,
-                                contentColor =
-                                    ComposeColor.White
-                            )
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally
                 ) {
 
                     Text(
                         text =
-                            "باشه، متوجه شدم",
+                            "تهران بزرگ",
                         fontSize =
-                            15.sp,
+                            26.sp,
                         fontWeight =
-                            FontWeight.Bold
+                            FontWeight.Bold,
+                        color =
+                            ACCENT_GREEN,
+                        textAlign =
+                            TextAlign.Center
                     )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                4.dp
+                            )
+                    )
+
+                    Text(
+                        text =
+                            "پیام مهم سازنده",
+                        fontSize =
+                            14.sp,
+                        fontWeight =
+                            FontWeight.Medium,
+                        color =
+                            TEXT_SOFT,
+                        textAlign =
+                            TextAlign.Center
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                12.dp
+                            )
+                    )
+
+                    /*
+                     * =============================================
+                     * SCROLL BOX (LazyColumn — JANK FREE)
+                     * =============================================
+                     *
+                     * LazyColumn فقط آیتم‌های در حال مشاهده را
+                     * compose می‌کند. این باعث حذف کامل لگ اسکرول
+                     * می‌شود، چون بر خلاف Column + verticalScroll
+                     * کل محتوا همزمان compose نمی‌شود.
+                     */
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(
+                                    210.dp
+                                )
+                                .clip(
+                                    RoundedCornerShape(
+                                        16.dp
+                                    )
+                                )
+                                .background(
+                                    INFO_BG,
+                                    RoundedCornerShape(
+                                        16.dp
+                                    )
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color =
+                                        INFO_BORDER,
+                                    shape =
+                                        RoundedCornerShape(
+                                            16.dp
+                                        )
+                                )
+                    ) {
+
+                        LazyColumn(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(
+                                        14.dp
+                                    ),
+                            horizontalAlignment =
+                                Alignment.CenterHorizontally
+                        ) {
+
+                            /*
+                             * آیتم متن اصلی
+                             */
+                            item(
+                                key =
+                                    "welcome_body_text"
+                            ) {
+
+                                Text(
+                                    text =
+                                        WELCOME_BODY_TEXT,
+                                    modifier =
+                                        Modifier.fillMaxWidth(),
+                                    fontSize =
+                                        15.sp,
+                                    lineHeight =
+                                        23.sp,
+                                    fontWeight =
+                                        FontWeight.Medium,
+                                    color =
+                                        TEXT_BRIGHT,
+                                    textAlign =
+                                        TextAlign.Right
+                                )
+                            }
+
+                            /*
+                             * آیتم لینک‌ها
+                             */
+                            items(
+                                count =
+                                    WELCOME_LINKS.size,
+                                key = { index ->
+                                    "welcome_link_$index"
+                                }
+                            ) { index ->
+
+                                val link =
+                                    WELCOME_LINKS[index]
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.height(
+                                            8.dp
+                                        )
+                                )
+
+                                WelcomeLinkButton(
+                                    text =
+                                        link.first,
+                                    accent =
+                                        link.second,
+                                    onClick = {
+                                        openExternalLink(
+                                            link.third
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                16.dp
+                            )
+                    )
+
+                    /*
+                     * =============================================
+                     * CONFIRM BUTTON
+                     * =============================================
+                     */
+                    OutlinedButton(
+                        onClick = {
+                            confirmWelcomeMessage()
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(
+                                    54.dp
+                                ),
+                        shape =
+                            RoundedCornerShape(
+                                17.dp
+                            ),
+                        border =
+                            androidx.compose
+                                .foundation
+                                .BorderStroke(
+                                    width = 1.dp,
+                                    color =
+                                        CONFIRM_BORDER
+                                ),
+                        colors =
+                            ButtonDefaults
+                                .outlinedButtonColors(
+                                    backgroundColor =
+                                        CONFIRM_BG,
+                                    contentColor =
+                                        ComposeColor.White
+                                )
+                    ) {
+
+                        Text(
+                            text =
+                                "باشه، متوجه شدم",
+                            fontSize =
+                                15.sp,
+                            fontWeight =
+                                FontWeight.Bold,
+                            textAlign =
+                                TextAlign.Center
+                        )
+                    }
                 }
             }
         }
@@ -2256,7 +2323,9 @@ object GameMenu {
                     13.sp,
 
                 fontWeight =
-                    FontWeight.Bold
+                    FontWeight.Bold,
+                textAlign =
+                    TextAlign.Center
             )
         }
     }
