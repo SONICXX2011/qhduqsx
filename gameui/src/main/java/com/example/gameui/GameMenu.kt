@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
@@ -97,10 +98,6 @@ object GameMenu {
      * ========================================================
      * PRE-ALLOCATED COLORS
      * ========================================================
-     *
-     * Compose Color یک value class است، ولی برای پرهیز از
-     * هرگونه ابهام و کاهش تخصیص در recompose های مکرر،
-     * رنگ‌های پرتکرار را یک‌بار می‌سازیم.
      */
     private val ACCENT_GREEN =
         ComposeColor(0xFF58E59A)
@@ -136,7 +133,7 @@ object GameMenu {
         ComposeColor(0x3358E59A)
 
     private val INFO_BG =
-        ComposeColor(0x12111A16)
+        ComposeColor(0x22111A16)
 
     private val SCRIM =
         ComposeColor(0xE6050907)
@@ -165,9 +162,6 @@ object GameMenu {
     private var characterLocked by
         mutableStateOf(false)
 
-    /*
-     * فقط Exit واقعی این را true می‌کند.
-     */
     private var exitWaiting by
         mutableStateOf(false)
 
@@ -176,11 +170,6 @@ object GameMenu {
 
     private var notificationToken = 0L
 
-    /*
-     * ========================================================
-     * PLAYER INFO
-     * ========================================================
-     */
     private var currentPlayerName by
         mutableStateOf("Null")
 
@@ -193,11 +182,6 @@ object GameMenu {
     private var composeView: ComposeView? = null
     private var lifecycleOwner: GameLifecycleOwner? = null
 
-    /*
-     * ========================================================
-     * WELCOME STATE
-     * ========================================================
-     */
     private var welcomeVisible by
         mutableStateOf(false)
 
@@ -393,11 +377,6 @@ object GameMenu {
      * ========================================================
      * SHOW WELCOME ONCE
      * ========================================================
-     *
-     * Frida این تابع را بلافاصله بعد از load شدن صدا می‌زند.
-     *
-     * فقط بعد از زدن دکمه "باشه، متوجه شدم" مقدار
-     * SharedPreferences ثبت می‌شود.
      */
     @JvmStatic
     fun showWelcomeOnce(
@@ -790,11 +769,6 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * CLEAR PLAYER NAME
-     * ========================================================
-     */
     @JvmStatic
     fun clearPlayerName() {
 
@@ -823,11 +797,6 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * ROLE
-     * ========================================================
-     */
     @JvmStatic
     fun setPlayerRole(
         role: String?
@@ -865,11 +834,6 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * MONEY
-     * ========================================================
-     */
     @JvmStatic
     fun setPlayerMoney(
         money: String?
@@ -907,11 +871,6 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * BACK MENU EVENT
-     * ========================================================
-     */
     @JvmStatic
     fun onBackMenuEvent() {
 
@@ -956,11 +915,6 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * EXIT EVENT
-     * ========================================================
-     */
     @JvmStatic
     fun onExitEvent() {
 
@@ -1002,22 +956,12 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * START GAME
-     * ========================================================
-     */
     @JvmStatic
     fun onStartGameClicked() {
 
         UnityGameUIBridge.startGame()
     }
 
-    /*
-     * ========================================================
-     * CHARACTER BUTTON
-     * ========================================================
-     */
     @JvmStatic
     fun openCharacter() {
 
@@ -1030,11 +974,6 @@ object GameMenu {
         onCharacterEvent()
     }
 
-    /*
-     * ========================================================
-     * GAME EDITOR LINK
-     * ========================================================
-     */
     private fun openGameEditorLink() {
 
         try {
@@ -1081,11 +1020,6 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * NOTIFICATION
-     * ========================================================
-     */
     @JvmStatic
     fun showJoinNotification() {
 
@@ -1121,11 +1055,6 @@ object GameMenu {
         }, 3000L)
     }
 
-    /*
-     * ========================================================
-     * VISIBILITY
-     * ========================================================
-     */
     private fun updateVisibility() {
 
         val view =
@@ -1162,16 +1091,6 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-            /*
-             * =================================================
-             * MAIN GAME UI
-             * =================================================
-             *
-             * این بخش وقتی Welcome باز است اصلاً compose
-             * نمی‌شود. این باعث حذف کامل لگ می‌شود چون
-             * دکمه‌های سنگین Main/Character زیر Welcome
-             * دیگر رندر نمی‌شوند.
-             */
             if (
                 visible &&
                 !networkActive &&
@@ -1204,14 +1123,6 @@ object GameMenu {
             }
         }
 
-        /*
-         * =================================================
-         * FIRST-LAUNCH WELCOME
-         * =================================================
-         *
-         * خارج از Box اصلی و در یک key مستقل،
-         * تا recompose آن به‌صورت مستقل مدیریت شود.
-         */
         if (
             welcomeVisible
         ) {
@@ -1470,11 +1381,6 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * CHARACTER INFO TEXT
-     * ========================================================
-     */
     @Composable
     private fun CharacterInfoText(
         title: String,
@@ -1877,11 +1783,6 @@ object GameMenu {
         }
     }
 
-    /*
-     * ========================================================
-     * SMALL BUTTON
-     * ========================================================
-     */
     @Composable
     private fun GlassSmallButton(
         modifier: Modifier = Modifier,
@@ -2002,15 +1903,15 @@ object GameMenu {
      * WELCOME OVERLAY
      * ========================================================
      *
-     * بهینه‌سازی‌ها:
+     * رفع باگ اسکرول:
      *
-     * - ارتفاع کادر اسکرول از 280dp به 210dp کاهش داده شد
-     *   تا layout pass سبک‌تر باشد.
-     *
-     * - درون کادر اسکرول از Arrangement.spacedBy استفاده
-     *   می‌شود تا layout node کمتری ساخته شود.
-     *
-     * - رنگ‌ها همه از ثابت‌های object می‌آیند.
+     * - کادر اسکرول داخل یک Box قرار گرفت
+     * - .clip(RoundedCornerShape(16.dp)) اضافه شد تا محتوای
+     *   اسکرول‌شونده از گوشه‌های گرد بیرون نزند و روی border
+     *   و پنل مادری overlap نکند
+     * - padding از modifier باکس اسکرول برداشته شد و به
+     *   Column داخلی منتقل شد تا اسکرول از لبه‌های واقعی
+     *   کادر شروع شود
      * ========================================================
      */
     @Composable
@@ -2095,12 +1996,25 @@ object GameMenu {
                 val scrollState =
                     rememberScrollState()
 
-                Column(
+                /*
+                 * =============================================
+                 * SCROLL BOX (FIXED)
+                 * =============================================
+                 *
+                 * clip قبل از background و border
+                 * تا محتوا دقیقاً داخل کادر گرد برش بخورد.
+                 */
+                Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .height(
                                 210.dp
+                            )
+                            .clip(
+                                RoundedCornerShape(
+                                    16.dp
+                                )
                             )
                             .background(
                                 INFO_BG,
@@ -2117,78 +2031,102 @@ object GameMenu {
                                         16.dp
                                     )
                             )
-                            .verticalScroll(
-                                scrollState
-                            )
-                            .padding(
-                                14.dp
-                            ),
-                    verticalArrangement =
-                        Arrangement.spacedBy(
-                            8.dp
-                        ),
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
                 ) {
 
-                    Text(
-                        text =
-                            "سلام! به تهران بزرگ خوش آمدید\n\n" +
-                            "این بازی توسط XXX SONIC ادیت شده است " +
-                            "و در مراحلی نیست که انتشار پیدا کند...\n\n" +
-                            "شما اول تستر هستید!\n\n" +
-                            "نباید این نسخه را در اختیار کسی بگذارید " +
-                            "و نسخه هنوز کامل نشده است.\n\n" +
-                            "سازنده اصلی این بازی :\n" +
-                            "محمد علیزاده | Mohammad Alizadeh\n\n" +
-                            "برای ارتباط با سازنده از لینک‌های زیر استفاده کنید 👇",
+                    Column(
                         modifier =
-                            Modifier.fillMaxWidth(),
-                        fontSize =
-                            15.sp,
-                        lineHeight =
-                            23.sp,
-                        fontWeight =
-                            FontWeight.Medium,
-                        color =
-                            TEXT_BRIGHT
-                    )
+                            Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(
+                                    scrollState
+                                )
+                                .padding(
+                                    14.dp
+                                ),
+                        horizontalAlignment =
+                            Alignment.CenterHorizontally
+                    ) {
 
-                    WelcomeLinkButton(
-                        text =
-                            "🌐  لینک سایت اصلی بازی",
-                        accent =
-                            Accent.GREEN,
-                        onClick = {
-                            openExternalLink(
-                                WELCOME_SITE_URL
-                            )
-                        }
-                    )
+                        Text(
+                            text =
+                                "سلام! به تهران بزرگ خوش آمدید\n\n" +
+                                "این بازی توسط XXX SONIC ادیت شده است " +
+                                "و در مراحلی نیست که انتشار پیدا کند...\n\n" +
+                                "شما اول تستر هستید!\n\n" +
+                                "نباید این نسخه را در اختیار کسی بگذارید " +
+                                "و نسخه هنوز کامل نشده است.\n\n" +
+                                "سازنده اصلی این بازی :\n" +
+                                "محمد علیزاده | Mohammad Alizadeh\n\n" +
+                                "برای ارتباط با سازنده از لینک‌های زیر استفاده کنید 👇",
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            fontSize =
+                                15.sp,
+                            lineHeight =
+                                23.sp,
+                            fontWeight =
+                                FontWeight.Medium,
+                            color =
+                                TEXT_BRIGHT
+                        )
 
-                    WelcomeLinkButton(
-                        text =
-                            "▶  کانال یوتیوب سازنده",
-                        accent =
-                            Accent.BLUE,
-                        onClick = {
-                            openExternalLink(
-                                WELCOME_YOUTUBE_URL
-                            )
-                        }
-                    )
+                        Spacer(
+                            modifier =
+                                Modifier.height(
+                                    12.dp
+                                )
+                        )
 
-                    WelcomeLinkButton(
-                        text =
-                            "💬  دیسکورد سازنده بازی",
-                        accent =
-                            Accent.GOLD,
-                        onClick = {
-                            openExternalLink(
-                                WELCOME_DISCORD_URL
-                            )
-                        }
-                    )
+                        WelcomeLinkButton(
+                            text =
+                                "🌐  لینک سایت اصلی بازی",
+                            accent =
+                                Accent.GREEN,
+                            onClick = {
+                                openExternalLink(
+                                    WELCOME_SITE_URL
+                                )
+                            }
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.height(
+                                    8.dp
+                                )
+                        )
+
+                        WelcomeLinkButton(
+                            text =
+                                "▶  کانال یوتیوب سازنده",
+                            accent =
+                                Accent.BLUE,
+                            onClick = {
+                                openExternalLink(
+                                    WELCOME_YOUTUBE_URL
+                                )
+                            }
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.height(
+                                    8.dp
+                                )
+                        )
+
+                        WelcomeLinkButton(
+                            text =
+                                "💬  دیسکورد سازنده بازی",
+                            accent =
+                                Accent.GOLD,
+                            onClick = {
+                                openExternalLink(
+                                    WELCOME_DISCORD_URL
+                                )
+                            }
+                        )
+                    }
                 }
 
                 Spacer(
