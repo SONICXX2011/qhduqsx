@@ -2,6 +2,7 @@ package com.example.gameui
 
 import android.app.Activity
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -24,7 +25,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.OutlinedButton
 import androidx.compose.material.OutlinedTextField
@@ -69,6 +72,26 @@ object GameMenu {
     private const val GAME_EDITOR_URL =
         "https://rubika.ir/SONICSELFPV"
 
+    /*
+     * ========================================================
+     * WELCOME / FIRST LAUNCH
+     * ========================================================
+     */
+    private const val WELCOME_PREFS =
+        "gameui_welcome_prefs"
+
+    private const val WELCOME_SHOWN_KEY =
+        "welcome_message_confirmed"
+
+    private const val WELCOME_SITE_URL =
+        "https://lacrimesonline.com/"
+
+    private const val WELCOME_YOUTUBE_URL =
+        "https://youtube.com/@mohammadalizade"
+
+    private const val WELCOME_DISCORD_URL =
+        "https://discord.gg/aQhGqHSc3W"
+
     private val mainHandler =
         Handler(Looper.getMainLooper())
 
@@ -102,17 +125,6 @@ object GameMenu {
      * ========================================================
      * PLAYER INFO
      * ========================================================
-     *
-     * این propertyها عمداً با نام current... هستند
-     * تا با متدهای JVM:
-     *
-     * setPlayerName()
-     * setPlayerRole()
-     * setPlayerMoney()
-     *
-     * clash نداشته باشند.
-     *
-     * فقط Name فعلاً از Frida مقدار واقعی می‌گیرد.
      */
     private var currentPlayerName by
         mutableStateOf("Null")
@@ -125,6 +137,17 @@ object GameMenu {
 
     private var composeView: ComposeView? = null
     private var lifecycleOwner: GameLifecycleOwner? = null
+
+    /*
+     * ========================================================
+     * WELCOME STATE
+     * ========================================================
+     */
+    private var welcomeVisible by
+        mutableStateOf(false)
+
+    private var welcomePreferences: SharedPreferences? =
+        null
 
     private enum class Page {
         MAIN,
@@ -241,9 +264,6 @@ object GameMenu {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
-            /*
-             * ComposeView خودش background ندارد.
-             */
             view.visibility =
                 View.GONE
 
@@ -316,6 +336,170 @@ object GameMenu {
 
     /*
      * ========================================================
+     * SHOW WELCOME ONCE
+     * ========================================================
+     *
+     * Frida این تابع را بلافاصله بعد از load شدن صدا می‌زند.
+     *
+     * فقط بعد از زدن دکمه "باشه، متوجه شدم" مقدار
+     * SharedPreferences ثبت می‌شود.
+     */
+    @JvmStatic
+    fun showWelcomeOnce(
+        activity: Activity
+    ) {
+
+        if (
+            Looper.myLooper() !=
+            Looper.getMainLooper()
+        ) {
+            mainHandler.post {
+                showWelcomeOnce(
+                    activity
+                )
+            }
+            return
+        }
+
+        try {
+
+            val prefs =
+                activity.getSharedPreferences(
+                    WELCOME_PREFS,
+                    Activity.MODE_PRIVATE
+                )
+
+            welcomePreferences =
+                prefs
+
+            if (
+                prefs.getBoolean(
+                    WELCOME_SHOWN_KEY,
+                    false
+                )
+            ) {
+                return
+            }
+
+            show(
+                activity
+            )
+
+            welcomeVisible =
+                true
+
+            visible =
+                true
+
+            updateVisibility()
+
+            Log.d(
+                TAG,
+                "WELCOME MESSAGE SHOWN"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "showWelcomeOnce failed",
+                t
+            )
+        }
+    }
+
+    /*
+     * ========================================================
+     * WELCOME CONFIRM
+     * ========================================================
+     */
+    private fun confirmWelcomeMessage() {
+
+        try {
+
+            welcomePreferences
+                ?.edit()
+                ?.putBoolean(
+                    WELCOME_SHOWN_KEY,
+                    true
+                )
+                ?.apply()
+
+            welcomeVisible =
+                false
+
+            updateVisibility()
+
+            Log.d(
+                TAG,
+                "WELCOME MESSAGE CONFIRMED"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "confirmWelcomeMessage failed",
+                t
+            )
+        }
+    }
+
+    /*
+     * ========================================================
+     * EXTERNAL LINK
+     * ========================================================
+     */
+    private fun openExternalLink(
+        url: String
+    ) {
+
+        try {
+
+            val view =
+                composeView
+                    ?: return
+
+            val context =
+                view.context
+
+            val intent =
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(
+                        url
+                    )
+                )
+
+            if (
+                context !is Activity
+            ) {
+                intent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK
+                )
+            }
+
+            context.startActivity(
+                intent
+            )
+
+            Log.d(
+                TAG,
+                "EXTERNAL LINK OPENED -> $url"
+            )
+
+        } catch (t: Throwable) {
+
+            Log.e(
+                TAG,
+                "openExternalLink failed -> $url",
+                t
+            )
+        }
+    }
+
+    /*
+     * ========================================================
      * GAME STATE
      * ========================================================
      */
@@ -346,13 +530,6 @@ object GameMenu {
             networkActive =
                 active
 
-            /*
-             * =================================================
-             * NETWORK
-             * =================================================
-             *
-             * Network همیشه اولویت اول است.
-             */
             if (active) {
 
                 visible =
@@ -363,18 +540,6 @@ object GameMenu {
                 return
             }
 
-            /*
-             * =================================================
-             * EXIT RESTORE
-             * =================================================
-             *
-             * وقتی:
-             *
-             * menu = 0
-             * active = false
-             *
-             * رسید، UI دوباره آزاد می‌شود.
-             */
             if (exitWaiting) {
 
                 if (
@@ -412,14 +577,6 @@ object GameMenu {
                 return
             }
 
-            /*
-             * =================================================
-             * CHARACTER LOCK
-             * =================================================
-             *
-             * وقتی Character باز است،
-             * Poller نباید Main را جایگزین کند.
-             */
             if (characterLocked) {
 
                 currentPage =
@@ -433,11 +590,6 @@ object GameMenu {
                 return
             }
 
-            /*
-             * =================================================
-             * MAIN
-             * =================================================
-             */
             if (menu == 0) {
 
                 currentPage =
@@ -451,11 +603,6 @@ object GameMenu {
                 return
             }
 
-            /*
-             * =================================================
-             * CHARACTER
-             * =================================================
-             */
             if (menu == 3) {
 
                 characterLocked =
@@ -472,11 +619,6 @@ object GameMenu {
                 return
             }
 
-            /*
-             * =================================================
-             * OTHER GAME STATES
-             * =================================================
-             */
             visible =
                 false
 
@@ -545,17 +687,6 @@ object GameMenu {
      * ========================================================
      * PLAYER NAME FROM FRIDA
      * ========================================================
-     *
-     * Frida فقط وقتی Character باز است
-     * باید این متد را صدا بزند.
-     *
-     * منبع واقعی Name در Frida:
-     *
-     * GtaMenuControl
-     *      -> _charSelect
-     *      -> nameInput
-     *      -> m_Text
-     *      -> content
      */
     @JvmStatic
     fun setPlayerName(
@@ -753,9 +884,6 @@ object GameMenu {
             currentPage =
                 Page.MAIN
 
-            /*
-             * فقط وقتی offline هستیم نمایش بده.
-             */
             visible =
                 !networkActive
 
@@ -799,10 +927,6 @@ object GameMenu {
             characterLocked =
                 false
 
-            /*
-             * عمداً true می‌شود.
-             * فقط Main واقعی + Offline آزادش می‌کند.
-             */
             exitWaiting =
                 true
 
@@ -962,7 +1086,8 @@ object GameMenu {
         view.visibility =
             if (
                 visible &&
-                !networkActive
+                !networkActive ||
+                welcomeVisible
             ) {
 
                 View.VISIBLE
@@ -1015,6 +1140,20 @@ object GameMenu {
                     text = text
                 )
             }
+
+            /*
+             * =================================================
+             * FIRST-LAUNCH WELCOME
+             * =================================================
+             *
+             * آخر از همه render می‌شود تا روی کل UI قرار بگیرد.
+             */
+            if (
+                welcomeVisible
+            ) {
+
+                WelcomeOverlay()
+            }
         }
     }
 
@@ -1031,14 +1170,6 @@ object GameMenu {
                 Modifier.fillMaxSize()
         ) {
 
-            /*
-             * =================================================
-             * GAME EDITOR BUTTON
-             * =================================================
-             *
-             * بالای مرکز
-             * کمی متمایل به راست
-             */
             GlassButton(
                 modifier =
                     Modifier
@@ -1275,8 +1406,6 @@ object GameMenu {
      * ========================================================
      * CHARACTER INFO TEXT
      * ========================================================
-     *
-     * تزئین کوچک و سبک فقط دور اطلاعات.
      */
     @Composable
     private fun CharacterInfoText(
@@ -1820,6 +1949,381 @@ object GameMenu {
 
                 color =
                     ComposeColor.White
+            )
+        }
+    }
+
+    /*
+     * ========================================================
+     * WELCOME OVERLAY
+     * ========================================================
+     */
+    @Composable
+    private fun WelcomeOverlay() {
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        ComposeColor(
+                            0xE6050907
+                        )
+                    ),
+            contentAlignment =
+                Alignment.Center
+        ) {
+
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 20.dp
+                        )
+                        .background(
+                            ComposeColor(
+                                0xF218201C
+                            ),
+                            RoundedCornerShape(
+                                24.dp
+                            )
+                        )
+                        .border(
+                            width = 1.dp,
+                            color =
+                                ComposeColor(
+                                    0x6658E59A
+                                ),
+                            shape =
+                                RoundedCornerShape(
+                                    24.dp
+                                )
+                        )
+                        .padding(
+                            18.dp
+                        ),
+                horizontalAlignment =
+                    Alignment.CenterHorizontally
+            ) {
+
+                Text(
+                    text =
+                        "تهران بزرگ",
+                    fontSize =
+                        26.sp,
+                    fontWeight =
+                        FontWeight.Bold,
+                    color =
+                        ComposeColor(
+                            0xFF58E59A
+                        )
+                )
+
+                Spacer(
+                    modifier =
+                        Modifier.height(
+                            6.dp
+                        )
+                )
+
+                Text(
+                    text =
+                        "پیام مهم سازنده",
+                    fontSize =
+                        14.sp,
+                    fontWeight =
+                        FontWeight.Medium,
+                    color =
+                        ComposeColor(
+                            0xFFD1D9D5
+                        )
+                )
+
+                Spacer(
+                    modifier =
+                        Modifier.height(
+                            14.dp
+                        )
+                )
+
+                /*
+                 * =============================================
+                 * SCROLLABLE CONTENT (TEXT + LINK BUTTONS)
+                 * =============================================
+                 */
+                val scrollState =
+                    rememberScrollState()
+
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(
+                                280.dp
+                            )
+                            .background(
+                                ComposeColor(
+                                    0x22111A16
+                                ),
+                                RoundedCornerShape(
+                                    16.dp
+                                )
+                            )
+                            .border(
+                                width = 1.dp,
+                                color =
+                                    ComposeColor(
+                                        0x3358E59A
+                                    ),
+                                shape =
+                                    RoundedCornerShape(
+                                        16.dp
+                                    )
+                            )
+                            .verticalScroll(
+                                scrollState
+                            )
+                            .padding(
+                                16.dp
+                            ),
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally
+                ) {
+
+                    Text(
+                        text =
+                            "سلام! به تهران بزرگ خوش آمدید\n\n" +
+                            "این بازی توسط XXX SONIC ادیت شده است " +
+                            "و در مراحلی نیست که انتشار پیدا کند...\n\n" +
+                            "شما اول تستر هستید!\n\n" +
+                            "نباید این نسخه را در اختیار کسی بگذارید " +
+                            "و نسخه هنوز کامل نشده است.\n\n" +
+                            "سازنده اصلی این بازی :\n" +
+                            "محمد علیزاده | Mohammad Alizadeh\n\n" +
+                            "برای ارتباط با سازنده از لینک‌های زیر استفاده کنید 👇",
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        fontSize =
+                            15.sp,
+                        lineHeight =
+                            25.sp,
+                        fontWeight =
+                            FontWeight.Medium,
+                        color =
+                            ComposeColor(
+                                0xFFE8EFEB
+                            )
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                16.dp
+                            )
+                    )
+
+                    /*
+                     * سه لینک داخل خود باکس اسکرول‌شونده.
+                     */
+                    WelcomeLinkButton(
+                        text =
+                            "🌐  لینک سایت اصلی بازی",
+                        accent =
+                            Accent.GREEN,
+                        onClick = {
+                            openExternalLink(
+                                WELCOME_SITE_URL
+                            )
+                        }
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                8.dp
+                            )
+                    )
+
+                    WelcomeLinkButton(
+                        text =
+                            "▶  کانال یوتیوب سازنده",
+                        accent =
+                            Accent.BLUE,
+                        onClick = {
+                            openExternalLink(
+                                WELCOME_YOUTUBE_URL
+                            )
+                        }
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                8.dp
+                            )
+                    )
+
+                    WelcomeLinkButton(
+                        text =
+                            "💬  دیسکورد سازنده بازی",
+                        accent =
+                            Accent.GOLD,
+                        onClick = {
+                            openExternalLink(
+                                WELCOME_DISCORD_URL
+                            )
+                        }
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                4.dp
+                            )
+                    )
+                }
+
+                Spacer(
+                    modifier =
+                        Modifier.height(
+                            18.dp
+                        )
+                )
+
+                /*
+                 * =============================================
+                 * CONFIRM BUTTON (OUTSIDE SCROLL, SEPARATE)
+                 * =============================================
+                 */
+                OutlinedButton(
+                    onClick = {
+                        confirmWelcomeMessage()
+                    },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(
+                                54.dp
+                            ),
+                    shape =
+                        RoundedCornerShape(
+                            17.dp
+                        ),
+                    border =
+                        androidx.compose
+                            .foundation
+                            .BorderStroke(
+                                width = 1.dp,
+                                color =
+                                    ComposeColor(
+                                        0xFF58E59A
+                                    )
+                            ),
+                    colors =
+                        ButtonDefaults
+                            .outlinedButtonColors(
+                                backgroundColor =
+                                    ComposeColor(
+                                        0x4458E59A
+                                    ),
+                                contentColor =
+                                    ComposeColor.White
+                            )
+                ) {
+
+                    Text(
+                        text =
+                            "باشه، متوجه شدم",
+                        fontSize =
+                            15.sp,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+
+    /*
+     * ========================================================
+     * WELCOME LINK BUTTON
+     * ========================================================
+     */
+    @Composable
+    private fun WelcomeLinkButton(
+        text: String,
+        accent: Accent,
+        onClick: () -> Unit
+    ) {
+
+        val accentColor =
+            when (accent) {
+
+                Accent.GREEN ->
+                    ComposeColor(
+                        0xFF58E59A
+                    )
+
+                Accent.GOLD ->
+                    ComposeColor(
+                        0xFFF0C85C
+                    )
+
+                Accent.BLUE ->
+                    ComposeColor(
+                        0xFF72B8FF
+                    )
+            }
+
+        OutlinedButton(
+            onClick =
+                onClick,
+
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(
+                        48.dp
+                    ),
+
+            shape =
+                RoundedCornerShape(
+                    14.dp
+                ),
+
+            border =
+                androidx.compose
+                    .foundation
+                    .BorderStroke(
+                        width = 1.dp,
+                        color =
+                            accentColor.copy(
+                                alpha = 0.65f
+                            )
+                    ),
+
+            colors =
+                ButtonDefaults
+                    .outlinedButtonColors(
+                        backgroundColor =
+                            ComposeColor(
+                                0x22111A16
+                            ),
+                        contentColor =
+                            ComposeColor.White
+                    )
+        ) {
+
+            Text(
+                text =
+                    text,
+
+                fontSize =
+                    13.sp,
+
+                fontWeight =
+                    FontWeight.Bold
             )
         }
     }

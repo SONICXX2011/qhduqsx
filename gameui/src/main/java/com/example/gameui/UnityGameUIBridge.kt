@@ -53,6 +53,39 @@ object UnityGameUIBridge {
         }
     }
 
+    /*
+     * ========================================================
+     * FIRST-LAUNCH WELCOME
+     * ========================================================
+     *
+     * Frida این متد را در startup صدا می‌زند.
+     * فقط یک‌بار (per install) نمایش داده می‌شود.
+     */
+    @JvmStatic
+    fun showWelcomeOnce(
+        activity: Activity
+    ) {
+
+        if (
+            Looper.myLooper() ==
+            Looper.getMainLooper()
+        ) {
+
+            GameMenu.showWelcomeOnce(
+                activity
+            )
+
+        } else {
+
+            mainHandler.post {
+
+                GameMenu.showWelcomeOnce(
+                    activity
+                )
+            }
+        }
+    }
+
     @JvmStatic
     fun setGameState(
         menu: Int,
@@ -81,25 +114,14 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * Frida intercepts this.
-     */
     @JvmStatic
     fun startGame() {
     }
 
-    /*
-     * Frida intercepts this.
-     */
     @JvmStatic
     fun openCharacter() {
     }
 
-    /*
-     * ========================================================
-     * CHARACTER EVENT
-     * ========================================================
-     */
     @JvmStatic
     fun onCharacterEvent() {
 
@@ -118,11 +140,6 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * ========================================================
-     * CHARACTER OPEN
-     * ========================================================
-     */
     @JvmStatic
     fun openCharacterFromBridge() {
 
@@ -141,14 +158,6 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * ========================================================
-     * PLAYER NAME
-     * ========================================================
-     *
-     * Frida باید فقط در زمان Character
-     * این متد را صدا بزند.
-     */
     @JvmStatic
     fun setPlayerName(
         name: String?
@@ -174,11 +183,6 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * ========================================================
-     * CLEAR PLAYER NAME
-     * ========================================================
-     */
     @JvmStatic
     fun clearPlayerName() {
 
@@ -198,11 +202,6 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * ========================================================
-     * ROLE
-     * ========================================================
-     */
     @JvmStatic
     fun setPlayerRole(
         role: String?
@@ -228,11 +227,6 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * ========================================================
-     * MONEY
-     * ========================================================
-     */
     @JvmStatic
     fun setPlayerMoney(
         money: String?
@@ -258,11 +252,6 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * ========================================================
-     * BACK MENU
-     * ========================================================
-     */
     @JvmStatic
     fun onBackMenuEvent() {
 
@@ -282,11 +271,6 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * ========================================================
-     * EXIT
-     * ========================================================
-     */
     @JvmStatic
     fun onExitEvent() {
 
@@ -306,11 +290,6 @@ object UnityGameUIBridge {
         }
     }
 
-    /*
-     * ========================================================
-     * NOTIFICATION
-     * ========================================================
-     */
     @JvmStatic
     fun showJoinNotification() {
 
